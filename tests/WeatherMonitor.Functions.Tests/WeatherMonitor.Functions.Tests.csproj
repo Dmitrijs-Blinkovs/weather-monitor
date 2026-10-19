@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WeatherMonitor.Functions\WeatherMonitor.Functions.csproj" />
+  </ItemGroup>
+
+</Project>

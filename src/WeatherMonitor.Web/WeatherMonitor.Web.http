@@ -1,0 +1,31 @@
+# Requests for the local Web API (started with F5 or `dotnet run --launch-profile https`).
+# Visual Studio and VS Code (REST Client) show a "Send request" link above each request.
+
+@Web = https://localhost:7180
+
+### Fetch log - newest first
+GET {{Web}}/api/logs?page=1&pageSize=10
+
+### Fetch log - failures for one city
+GET {{Web}}/api/logs?city=Rome&status=Failure
+
+### Cities seen so far
+GET {{Web}}/api/cities
+
+### Temperature history for a period (ISO 8601 with offset)
+GET {{Web}}/api/weather/history?from=2026-10-19T00:00:00Z&to=2026-10-20T00:00:00Z
+
+### Invalid: 'from' after 'to' -> 400 problem details
+GET {{Web}}/api/weather/history?from=2026-10-20T00:00:00Z&to=2026-10-19T00:00:00Z
+
+### Invalid: page size above 200 -> 400 problem details
+GET {{Web}}/api/logs?pageSize=500
+
+### Unknown API route -> 404 problem details (not the SPA)
+GET {{Web}}/api/unknown
+
+### Health (includes the database)
+GET {{Web}}/health
+
+### OpenAPI document (development only)
+GET {{Web}}/openapi/v1.json

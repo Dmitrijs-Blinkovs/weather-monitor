@@ -1,0 +1,30 @@
+using WeatherMonitor.Application.History;
+using WeatherMonitor.Domain;
+
+namespace WeatherMonitor.Application.Tests;
+
+internal static class TestData
+{
+    public static readonly DateTime Now = new(2026, 10, 19, 12, 0, 0, DateTimeKind.Utc);
+
+    public static CurrentWeather Weather(
+        double temperature = 11.5,
+        string country = "GB",
+        DateTime? observedAtUtc = null) =>
+        new(
+            Country: country,
+            Temperature: temperature,
+            TemperatureMin: temperature - 1,
+            TemperatureMax: temperature + 1,
+            ObservedAtUtc: observedAtUtc ?? Now.AddMinutes(-5),
+            RawPayload: """{"name":"Test","main":{"temp":11.5}}""");
+
+    public static WeatherObservation Observation(
+        string city,
+        DateTime observedAtUtc,
+        double temperature,
+        double? min = null,
+        double? max = null,
+        string country = "GB") =>
+        new(city, country, temperature, min ?? temperature - 1, max ?? temperature + 1, observedAtUtc);
+}

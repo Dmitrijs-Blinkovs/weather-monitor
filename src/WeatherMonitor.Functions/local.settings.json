@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "ConnectionStrings__WeatherDb": "Server=(localdb)\\MSSQLLocalDB;Database=WeatherMonitor;Trusted_Connection=True;TrustServerCertificate=True",
+    "Database__ApplyMigrationsOnStartup": "true"
+  }
+}

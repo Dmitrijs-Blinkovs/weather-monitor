@@ -1,0 +1,13 @@
+# Requests for the local Functions host (started with F5 or `dotnet run`).
+# Visual Studio and VS Code (REST Client) show a "Send request" link above each request.
+
+@FunctionsHost = http://localhost:7071
+
+### Run the timer-triggered function now instead of waiting for the next minute
+POST {{FunctionsHost}}/admin/functions/FetchWeather
+Content-Type: application/json
+
+{ "input": "" }
+
+### Host status
+GET {{FunctionsHost}}/admin/host/status

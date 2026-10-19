@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "functionTimeout": "00:00:55",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Function.FetchWeather": "Information"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".gitignore" />
+    <File Path="AGENTS.md" />
+    <File Path="CLAUDE.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="dotnet-tools.json" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+    <File Path="WeatherMonitor.slnLaunch" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/architecture.md" />
+    <File Path="docs/debugging-in-visual-studio.md" />
+    <File Path="docs/getting-started.md" />
+  </Folder>
+  <Folder Name="/docs/adr/">
+    <File Path="docs/adr/README.md" />
+    <File Path="docs/adr/0001-layered-architecture.md" />
+    <File Path="docs/adr/0002-raw-payload-plus-extracted-columns.md" />
+    <File Path="docs/adr/0003-log-every-attempt-isolate-failures.md" />
+    <File Path="docs/adr/0004-distinct-observations-on-read.md" />
+    <File Path="docs/adr/0005-cities-with-country-codes.md" />
+    <File Path="docs/adr/0006-utc-datetime.md" />
+    <File Path="docs/adr/0007-spa-hosted-by-aspnet-core.md" />
+    <File Path="docs/adr/0008-secrets-and-local-settings.md" />
+    <File Path="docs/adr/0009-test-strategy.md" />
+    <File Path="docs/adr/0010-accessible-chart.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/weather-monitor.client/weather-monitor.client.esproj">
+      <Build />
+      <Deploy />
+    </Project>
+    <Project Path="src/WeatherMonitor.Application/WeatherMonitor.Application.csproj" />
+    <Project Path="src/WeatherMonitor.Domain/WeatherMonitor.Domain.csproj" />
+    <Project Path="src/WeatherMonitor.Functions/WeatherMonitor.Functions.csproj" />
+    <Project Path="src/WeatherMonitor.Infrastructure/WeatherMonitor.Infrastructure.csproj" />
+    <Project Path="src/WeatherMonitor.Web/WeatherMonitor.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests/Directory.Build.props" />
+    <Project Path="tests/WeatherMonitor.Application.Tests/WeatherMonitor.Application.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Functions.Tests/WeatherMonitor.Functions.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Infrastructure.Tests/WeatherMonitor.Infrastructure.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Web.Tests/WeatherMonitor.Web.Tests.csproj" />
+  </Folder>
+</Solution>

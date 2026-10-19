@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "azurite",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "azurite", "--silent", "--location", ".azurite"],
+      "port": 10000
+    },
+    {
+      "name": "functions",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/WeatherMonitor.Functions"],
+      "port": 7071
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/WeatherMonitor.Web", "--launch-profile", "http"],
+      "port": 5180
+    }
+  ]
+}
