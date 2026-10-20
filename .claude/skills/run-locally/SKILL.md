@@ -61,9 +61,11 @@ Stop the background processes you started (Web stops Vite with it). Leave proces
 
 - Data stops arriving while the Web host runs: only the Web project was started. In Visual Studio pick the
   **Web + Functions** profile; from the CLI start Azurite and the Functions host too.
-- `SQL Server process failed to start`, or `MSSQLLocalDB` is shared with projects you must not touch: give this
-  project its own instance (`sqllocaldb create WeatherMonitor -s`) and set `ConnectionStrings:WeatherDb` in user
-  secrets of both hosts (`docs/getting-started.md`, Troubleshooting). Never restart or repair a shared instance.
+- An agent shell inside a packaged desktop app (MSIX, e.g. the Claude desktop app) sees a virtualized HKCU registry:
+  LocalDB instances it creates or starts are invisible to the user's Visual Studio ("The specified LocalDB instance
+  does not exist"), and `sqllocaldb info` there can disagree with reality ("Stopped" while running, "failed to start").
+  From such a shell never create, start, stop or repair LocalDB instances and never point the user's settings at
+  them; ask the user to run `sqllocaldb info MSSQLLocalDB` in their own terminal. Never restart a shared instance.
 - A new API key answers 401 for up to ~2 hours; failures then appear in the fetch log, which is correct behaviour.
 - Typing a deep link on port 5180 returns 404 in development; navigate from `/` or use port 5173.
 - The chart gets a new point only when the provider updates an observation (~every 10 minutes).

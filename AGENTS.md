@@ -118,8 +118,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - New package: add `<PackageVersion>` to `Directory.Packages.props`, then a version-less `<PackageReference>`.
   High/critical NuGet advisories (also transitive) fail the build; pin a fixed transitive version there if needed.
 - Never put secrets in files under source control. The OpenWeatherMap key lives in user secrets locally.
-  `<UserSecretsId>` in a `.csproj` is only the name of that local folder (`weather-monitor-functions-…`,
-  `weather-monitor-web-…`), not a secret; keep the readable names.
+  `<UserSecretsId>` in the Functions `.csproj` is only the name of that local folder, not a secret. The Web project
+  has no secrets (Windows authentication to LocalDB), so it has no `UserSecretsId`.
 
 **Tests**
 - Name tests as sentences (`A_failed_city_is_logged_as_a_failure_while_the_others_are_still_stored`).
@@ -184,6 +184,9 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   after migrating). Anything the web app must write needs a deliberate change (ADR 0015).
 - OpenTelemetry in the Functions worker is wired up only with an Application Insights connection string: with
   `UseFunctionsWorkerDefaults()` the host stops forwarding worker logs, so locally the console would go silent.
+- AI agents running inside a packaged desktop app (MSIX) see a virtualized HKCU: a LocalDB instance they create is
+  invisible to the user's tools, and their `sqllocaldb` view can be wrong. Do not create or repair LocalDB instances
+  from there, and do not point the user's connection strings at them; let the user run `sqllocaldb` themselves.
 - `workflow_run` branch filters match only the branch name; the deploy workflow also checks that the CI run was a
   push to this repository. Keep that check.
 

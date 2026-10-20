@@ -5,10 +5,6 @@
     <SpaRoot>..\weather-monitor.client</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
     <SpaProxyServerUrl>http://localhost:5173</SpaProxyServerUrl>
-    <!-- Not a secret: the name of this project's local user-secrets folder
-         (%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json), read in Development only. It lets a developer override
-         settings such as the connection string without touching files under source control. -->
-    <UserSecretsId>weather-monitor-web-e3a9e6bc</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
