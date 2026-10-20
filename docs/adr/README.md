@@ -16,6 +16,9 @@ supersedes the old one (and mark the old one `Superseded by NNNN`) instead of re
 | [0008](0008-secrets-and-local-settings.md) | API key in user secrets; `local.settings.json` committed without secrets | Accepted |
 | [0009](0009-test-strategy.md) | Test without external dependencies (SQLite, WebApplicationFactory, MTP) | Accepted |
 | [0010](0010-accessible-chart.md) | Validated colour palette, colour per city, value-first tooltip | Accepted |
+| [0011](0011-azure-hosting-and-identity.md) | Azure: Flex Consumption, App Service, Azure SQL, one managed identity | Accepted (not deployed yet) |
+| [0012](0012-ci-cd-with-github-actions.md) | CI/CD with GitHub Actions, azd and OpenID Connect | Accepted |
+| [0013](0013-browser-tests-with-playwright.md) | Browser tests with Playwright against the production build and a mocked API | Accepted |
 
 Template for a new record (`NNNN-short-title.md`):
 

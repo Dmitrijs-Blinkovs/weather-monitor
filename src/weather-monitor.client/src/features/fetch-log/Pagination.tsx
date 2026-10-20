@@ -1,3 +1,5 @@
+import { formatInteger } from '../../lib/format';
+
 interface PaginationProps {
   page: number;
   totalPages: number;
@@ -14,7 +16,7 @@ export function Pagination({ page, totalPages, totalCount, onPageChange }: Pagin
         Previous
       </button>
       <span className="pagination__status">
-        Page {page} of {lastPage} · {totalCount.toLocaleString()} attempts
+        Page {page} of {lastPage} · {formatInteger(totalCount)} attempts
       </span>
       <button type="button" className="button" disabled={page >= lastPage} onClick={() => onPageChange(page + 1)}>
         Next

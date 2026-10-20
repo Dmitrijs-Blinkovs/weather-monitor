@@ -76,7 +76,13 @@ dotnet test --solution WeatherMonitor.slnx
 cd src/weather-monitor.client && npm ci && npm test
 ```
 
-Expected: build with 0 warnings; all tests green. None of these need the key, the database or the network.
+Browser tests (downloads Chromium once, then builds and previews the app itself):
+
+```bash
+cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
+```
+
+Expected: build with 0 warnings; all tests green. None of these need the key, the database or Azure.
 
 ## 6. Run
 
@@ -148,7 +154,8 @@ shows a Windows administrator prompt that only you can approve.
 | Port 5173/5180/7071/7180 already in use | Another instance is running; stop it (Visual Studio Shift+F5 or close the terminal). |
 | `func` not found after winget install | Open a new terminal (PATH refresh). |
 | `Testing with VSTest target is no longer supported` | Use `dotnet test --solution ...` / `--project ...` (Microsoft.Testing.Platform, configured in `global.json`). |
-| Rome shows country `US` | Data stored before cities had country codes; reset the database (below). |
+| A city shows the wrong country | Its `CountryCode` is missing or wrong in `Weather:Cities` (a bare `Rome` is Rome, Georgia, USA). Fix it (`.claude/skills/manage-cities`); rows stored earlier keep the old country - reset the local database (below) if that matters. |
+| Build error `MSB3030: Could not copy ... WorkerExtensions ... because it was not found` | The clone path is too deep for Windows' 260-character limit (the Functions build nests long paths). Clone to a short path such as `C:\src\weather-monitor`, or enable long paths in Windows. |
 
 Reset the local database (it is recreated on the next start):
 

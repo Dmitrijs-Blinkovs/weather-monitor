@@ -26,7 +26,12 @@ internal sealed class WeatherHistoryService(IWeatherHistoryReader reader) : IWea
 
     private static CityTemperatureSeriesDto BuildCitySeries(IGrouping<string, WeatherObservation> city)
     {
-        var ordered = city.OrderBy(observation => observation.ObservedAtUtc).ToList();
+        // One point per observation time: if the provider revised an observation without changing its time,
+        // only one version is kept so the chart and the table never show two values for the same moment.
+        var ordered = city
+            .OrderBy(observation => observation.ObservedAtUtc)
+            .DistinctBy(observation => observation.ObservedAtUtc)
+            .ToList();
         var latest = ordered[^1];
 
         return new CityTemperatureSeriesDto(

@@ -44,6 +44,20 @@ public sealed class WeatherHistoryServiceTests
     }
 
     [Fact]
+    public async Task Keeps_one_point_per_observation_time_when_the_provider_revised_a_value()
+    {
+        var observedAt = To.AddHours(-1);
+        Returns(
+            TestData.Observation("Riga", observedAt, 5),
+            TestData.Observation("Riga", observedAt, 5.4),
+            TestData.Observation("Riga", To.AddMinutes(-10), 6));
+
+        var riga = (await CreateService().GetHistoryAsync(From, To, TestContext.Current.CancellationToken)).Cities.Single();
+
+        riga.Points.Select(point => point.ObservedAtUtc).ShouldBe([observedAt, To.AddMinutes(-10)]);
+    }
+
+    [Fact]
     public async Task Returns_no_series_when_the_period_has_no_data()
     {
         Returns();

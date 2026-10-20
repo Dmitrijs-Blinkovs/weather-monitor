@@ -1,9 +1,10 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
-    <File Path=".github/workflows/ci.yml" />
+    <File Path=".gitattributes" />
     <File Path=".gitignore" />
     <File Path="AGENTS.md" />
+    <File Path="azure.yaml" />
     <File Path="CLAUDE.md" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
@@ -12,9 +13,21 @@
     <File Path="README.md" />
     <File Path="WeatherMonitor.slnLaunch" />
   </Folder>
+  <Folder Name="/.github/">
+    <File Path=".github/dependabot.yml" />
+    <File Path=".github/pull_request_template.md" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/deploy.yml" />
+  </Folder>
+  <Folder Name="/infra/">
+    <File Path="infra/main.bicep" />
+    <File Path="infra/main.parameters.json" />
+    <File Path="infra/resources.bicep" />
+  </Folder>
   <Folder Name="/docs/">
     <File Path="docs/architecture.md" />
     <File Path="docs/debugging-in-visual-studio.md" />
+    <File Path="docs/deployment.md" />
     <File Path="docs/getting-started.md" />
   </Folder>
   <Folder Name="/docs/adr/">
@@ -29,6 +42,9 @@
     <File Path="docs/adr/0008-secrets-and-local-settings.md" />
     <File Path="docs/adr/0009-test-strategy.md" />
     <File Path="docs/adr/0010-accessible-chart.md" />
+    <File Path="docs/adr/0011-azure-hosting-and-identity.md" />
+    <File Path="docs/adr/0012-ci-cd-with-github-actions.md" />
+    <File Path="docs/adr/0013-browser-tests-with-playwright.md" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/weather-monitor.client/weather-monitor.client.esproj">

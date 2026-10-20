@@ -11,7 +11,8 @@
   --text-muted: #6f6d68;
   --grid: #e1e0d9;
   --axis: #c3c2b7;
-  --accent: #2a78d6;
+  /* #256abf keeps white button text above the WCAG AA 4.5:1 contrast (#2a78d6 is only 4.4:1). */
+  --accent: #256abf;
   --accent-ink: #ffffff;
   --wash: rgba(11, 11, 11, 0.05);
 
@@ -51,6 +52,7 @@
     --grid: #2c2c2a;
     --axis: #383835;
     --accent: #3987e5;
+    --accent-ink: #0b0b0b;
     --wash: rgba(255, 255, 255, 0.06);
 
     --series-1: #3987e5;

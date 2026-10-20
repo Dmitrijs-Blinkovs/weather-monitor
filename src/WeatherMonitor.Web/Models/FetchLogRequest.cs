@@ -10,7 +10,10 @@ public sealed class FetchLogRequest
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 200;
 
-    [Range(1, int.MaxValue)]
+    /// <summary>Largest page whose row offset ((page - 1) * pageSize) still fits in an <see cref="int"/>.</summary>
+    public const int MaxPage = int.MaxValue / MaxPageSize;
+
+    [Range(1, MaxPage)]
     public int Page { get; init; } = 1;
 
     [Range(1, MaxPageSize)]

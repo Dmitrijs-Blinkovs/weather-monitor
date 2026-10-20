@@ -1,0 +1,33 @@
+# Weekly dependency updates, grouped so that related packages move together in one pull request.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dotnet-platform:
+        patterns: ["Microsoft.AspNetCore.*", "Microsoft.EntityFrameworkCore*", "Microsoft.Extensions.*", "System.*"]
+      azure-functions:
+        patterns: ["Microsoft.Azure.Functions.*"]
+      testing:
+        patterns: ["xunit*", "Microsoft.NET.Test.Sdk", "Microsoft.Testing.*", "NSubstitute*", "Shouldly"]
+
+  - package-ecosystem: npm
+    directory: /src/weather-monitor.client
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react*", "react-router"]
+      tooling:
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "typescript", "typescript-eslint", "eslint*", "@eslint/*", "globals"]
+      testing:
+        patterns: ["@testing-library/*", "jsdom", "@playwright/test", "@axe-core/*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -89,15 +89,17 @@ public sealed class WeatherIngestionServiceTests
     public async Task An_unexpected_provider_exception_is_logged_as_a_failure_instead_of_aborting_the_run()
     {
         _provider.GetCurrentWeatherAsync("London", Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns<WeatherFetchResult>(_ => throw new InvalidOperationException("boom"));
+            .Returns<WeatherFetchResult>(_ => throw new InvalidOperationException("boom: appid=secret"));
 
         var summary = await CreateService().IngestAsync(TestContext.Current.CancellationToken);
 
         var london = _stored.Single(attempt => attempt.City == "London");
         london.IsSuccess.ShouldBeFalse();
         london.HttpStatusCode.ShouldBeNull();
-        london.ErrorMessage.ShouldBe("boom");
         summary.Failed.ShouldBe(1);
+
+        // Only the exception type is stored; its text (which might carry request details) stays in the logs.
+        london.ErrorMessage.ShouldBe("Unexpected error (InvalidOperationException); see the function logs.");
     }
 
     [Fact]
@@ -116,17 +118,30 @@ public sealed class WeatherIngestionServiceTests
     }
 
     [Fact]
-    public async Task Cancellation_stops_the_run_without_storing_anything()
+    public async Task A_cancelled_run_keeps_finished_cities_logs_unfinished_ones_as_failures_and_reports_the_cancellation()
     {
         using var cancellation = new CancellationTokenSource();
+        var saveToken = CancellationToken.None;
+        _repository
+            .AddRangeAsync(Arg.Do<IReadOnlyCollection<FetchAttempt>>(attempts => _stored = attempts), Arg.Do<CancellationToken>(token => saveToken = token))
+            .Returns(Task.CompletedTask);
+        _provider.GetCurrentWeatherAsync("Rome", Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return WeatherFetchResult.Success(200, TestData.Weather());
+            });
+
+        var run = CreateService().IngestAsync(cancellation.Token);
         await cancellation.CancelAsync();
-        _provider.GetCurrentWeatherAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns<WeatherFetchResult>(call => throw new OperationCanceledException(call.Arg<CancellationToken>()));
 
-        await Should.ThrowAsync<OperationCanceledException>(() => CreateService().IngestAsync(cancellation.Token));
-
-        await _repository.DidNotReceive()
-            .AddRangeAsync(Arg.Any<IReadOnlyCollection<FetchAttempt>>(), Arg.Any<CancellationToken>());
+        await Should.ThrowAsync<OperationCanceledException>(() => run);
+        _stored.Count.ShouldBe(3);
+        _stored.Where(attempt => attempt.City != "Rome").ShouldAllBe(attempt => attempt.IsSuccess);
+        var rome = _stored.Single(attempt => attempt.City == "Rome");
+        rome.IsSuccess.ShouldBeFalse();
+        rome.ErrorMessage.ShouldBe(WeatherIngestionService.CancelledMessage);
+        saveToken.IsCancellationRequested.ShouldBeFalse(); // saved with its own short timeout, not the cancelled token
     }
 
     private WeatherIngestionService CreateService(CityOptions[]? cities = null) =>

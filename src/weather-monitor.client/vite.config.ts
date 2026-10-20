@@ -20,9 +20,17 @@ export default defineConfig({
     },
   },
   test: {
+    // Unit/component tests only; browser tests in e2e/ run with Playwright.
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx'],
+      reporter: ['text-summary', 'html', 'cobertura'],
+    },
   },
 });

@@ -2,27 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A push and the pull request for the same branch share one group, so only the newest run survives.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    env:
-      DOTNET_NOLOGO: true
-      DOTNET_CLI_TELEMETRY_OPTOUT: true
-    defaults:
-      run:
-        shell: bash
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  CLIENT_DIR: src/weather-monitor.client
 
+jobs:
+  backend:
+    name: .NET build and tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
@@ -30,30 +32,113 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # The web project references the React project (.esproj), so the .NET build needs Node and the npm packages.
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: src/weather-monitor.client/package-lock.json
+          cache-dependency-path: ${{ env.CLIENT_DIR }}/package-lock.json
 
-      - name: Front end - install
-        working-directory: src/weather-monitor.client
+      - name: Install front-end packages
+        working-directory: ${{ env.CLIENT_DIR }}
         run: npm ci
 
-      - name: Front end - lint
-        working-directory: src/weather-monitor.client
-        run: npm run lint
-
-      - name: Front end - test
-        working-directory: src/weather-monitor.client
-        run: npm test
-
-      - name: Front end - build
-        working-directory: src/weather-monitor.client
-        run: npm run build
-
-      - name: .NET - build
+      - name: Build (warnings are errors)
         run: dotnet build WeatherMonitor.slnx --configuration Release
 
-      - name: .NET - test
-        run: dotnet test --solution WeatherMonitor.slnx --configuration Release --no-build
+      - name: Test with coverage
+        run: >
+          dotnet test --solution WeatherMonitor.slnx --configuration Release --no-build
+          --coverage --coverage-output-format cobertura --report-trx
+
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        uses: danielpalme/ReportGenerator-GitHub-Action@v5
+        with:
+          reports: TestResults/*.cobertura.xml
+          targetdir: coverage-report
+          reporttypes: MarkdownSummaryGithub;Cobertura
+          assemblyfilters: +WeatherMonitor.*;-*.Tests
+          classfilters: -WeatherMonitor.Infrastructure.Persistence.Migrations.*
+
+      - name: Publish coverage summary
+        if: ${{ !cancelled() }}
+        run: cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: |
+            TestResults/*.trx
+            coverage-report/
+          retention-days: 14
+
+  frontend:
+    name: Front-end lint, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.CLIENT_DIR }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.CLIENT_DIR }}/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:coverage
+      - run: npm run build # type-checks app, tests and e2e (tsc -b) and builds the production bundle
+
+      - name: Upload coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: ${{ env.CLIENT_DIR }}/coverage/
+          retention-days: 14
+
+  infra:
+    name: Infrastructure templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile and lint Bicep (warnings are errors)
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null 2> bicep.log || { cat bicep.log; exit 1; }
+          if grep -q "Warning" bicep.log; then cat bicep.log; exit 1; fi
+
+  e2e:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.CLIENT_DIR }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.CLIENT_DIR }}/package-lock.json
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            ${{ env.CLIENT_DIR }}/playwright-report/
+            ${{ env.CLIENT_DIR }}/test-results/
+          retention-days: 14

@@ -30,5 +30,14 @@ public sealed class RoutingTests : IAsyncDisposable
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
     }
 
+    [Fact]
+    public async Task A_wrong_http_method_on_an_existing_route_is_not_allowed()
+    {
+        using var response = await _factory.CreateClient()
+            .PostAsync("/api/logs", content: null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.MethodNotAllowed);
+    }
+
     public ValueTask DisposeAsync() => _factory.DisposeAsync();
 }

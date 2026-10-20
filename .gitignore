@@ -486,6 +486,15 @@ $RECYCLE.BIN/
 dist/
 coverage/
 *.tsbuildinfo
+# Azure Developer CLI environments (contain the OpenWeatherMap key and subscription settings)
+.azure/
+# Playwright output
+playwright-report/
+test-results/
+blob-report/
+# Test coverage output (.NET)
+TestResults/
+*.cobertura.xml
 # Azurite local storage emulator data
 __azurite_db_*.json
 __blobstorage__/

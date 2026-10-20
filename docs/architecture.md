@@ -123,12 +123,13 @@ Failure handling:
 | Timeout / circuit open (resilience pipeline) | failed attempt, no status code |
 | Network error | failed attempt, message with the API key redacted |
 | 200 with unparsable or incomplete JSON | failed attempt with status 200 and the reason |
-| Unexpected exception in the provider | caught by the service, failed attempt, logged as error |
-| Cancellation (host shutdown) | run aborted, nothing stored |
+| Unexpected exception in the provider | caught by the service, failed attempt "Unexpected error (Type)"; the exception text is only logged |
+| Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved with a short separate timeout, then the cancellation is reported to the runtime |
 | Database unavailable | the function invocation fails and the Functions runtime logs it; the next minute retries |
 
 Resilience (`AddStandardResilienceHandler`): 10 s per attempt, 2 retries with backoff for transient errors (5xx, 408,
-429, timeouts), circuit breaker, 30 s total - always shorter than the one-minute schedule. `functionTimeout` is 55 s.
+429, timeouts), circuit breaker, 30 s total per city. SQL retries transient errors (`EnableRetryOnFailure`). The
+Functions `functionTimeout` of 55 s bounds a whole run below the one-minute schedule.
 
 ## 6. Read side and API
 
@@ -139,13 +140,14 @@ Resilience (`AddStandardResilienceHandler`): 10 s per attempt, 2 retries with ba
 | `GET /api/weather/history?from&to` | `WeatherController` -> `IWeatherHistoryService` | ISO 8601 with offset; `from < to`; range <= 31 days |
 | `GET /health` | health checks | includes a database check |
 | `GET /openapi/v1.json` | OpenAPI (development only) | |
-| `/api/*` (unknown) | minimal endpoint | `404` problem details - never the SPA |
+| `GET/HEAD /api/*` (unknown) | minimal endpoint | `404` problem details - never the SPA; a wrong verb on a known route gets `405` |
 | anything else | `MapFallbackToFile("index.html")` | client-side routes of the SPA |
 
 History query: `SELECT DISTINCT City, Country, Temperature, TemperatureMin, TemperatureMax, ObservedAtUtc` within the
 range. Because the provider refreshes an observation about every 10 minutes, the minute-by-minute duplicates collapse
-into one point per real observation. `WeatherHistoryService` then groups by city, orders by observation time and
-computes the card summary: latest temperature and country, lowest `temp_min`, highest `temp_max`, last update time.
+into one point per real observation. `WeatherHistoryService` then groups by city, orders by observation time, keeps one
+point per observation time (a revised observation with the same `dt` would otherwise appear twice) and computes the card
+summary: latest temperature and country, lowest `temp_min`, highest `temp_max`, last update time.
 
 Validation lives in request models (`FetchLogRequest`, `WeatherHistoryRequest : IValidatableObject`) and returns
 `400 application/problem+json` through `[ApiController]`. The range rule is shared with the service
@@ -175,7 +177,10 @@ src/
   time (`pointAt`, binary search), not only cities observed exactly then. Ticks are spread over the whole selected
   range (`timeTicks`). The min/max band can be hidden; the same data is available as a table.
 - **Colour:** fixed categorical slots validated for colour-vision deficiency (light and dark), assigned per city from the
-  full city list, so filtering never repaints a city. Lines carry direct labels; text uses ink tokens only.
+  full city list, so filtering never repaints a city. Lines carry direct labels; text uses ink tokens only. Both pages
+  pass axe-core WCAG 2 A/AA in light and dark mode (checked by the Playwright suite).
+- **Language:** English only. Dates and numbers are formatted with a fixed English locale (`UI_LOCALE = 'en-GB'`,
+  24-hour clock) in the viewer's time zone; the native date-time inputs follow the browser's own locale.
 - **Dev serving:** `npm run dev` (Vite, port 5173) is started by the ASP.NET Core SPA proxy; Vite proxies `/api` and
   `/health` to the backend. On publish, the `.esproj` builds the app and its `dist` is copied into `wwwroot`.
 
@@ -184,7 +189,7 @@ src/
 | Key | Host | Default / source |
 |---|---|---|
 | `ConnectionStrings:WeatherDb` | both | LocalDB in `appsettings.Development.json` (Web) and `local.settings.json` (Functions) |
-| `Database:ApplyMigrationsOnStartup` | both | `true` in development, `false` otherwise |
+| `Database:ApplyMigrationsOnStartup` | both | `true` in development and in the Azure templates; runs before the host starts serving (`IHostedLifecycleService.StartingAsync`) |
 | `Weather:Cities` (`[{ Name, CountryCode }]`) | Functions | London/GB, Rome/IT, Riga/LV in `appsettings.json` |
 | `OpenWeatherMap:ApiKey` | Functions | user secrets locally; app setting / Key Vault in Azure. Required (validated on start) |
 | `OpenWeatherMap:BaseUrl` | Functions | `https://api.openweathermap.org/` |
@@ -197,16 +202,19 @@ message that says what to set.
 
 | Project | What it proves | How |
 |---|---|---|
-| Application.Tests | domain invariants; ingestion (parallel, isolation of failures, timing, cancellation, country codes); history grouping/summary; options validation | pure unit tests, NSubstitute, `FakeTimeProvider` |
-| Infrastructure.Tests | OpenWeatherMap request/parse/error mapping/redaction; repository and readers incl. `DISTINCT`, paging, filters, UTC round-trip; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `ValidateOnBuild` |
-| Web.Tests | routing, binding, validation (problem details), JSON shape, SPA fallback vs. API 404 | `WebApplicationFactory` with substituted ports |
-| Functions.Tests | the trigger delegates and propagates failures; schedule | unit |
-| client (Vitest) | date-range rules, chart shaping, tooltip, filters, tables, both pages against a fake API | Testing Library, jsdom |
+| Application.Tests | domain invariants; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored); history grouping/summary/duplicate times; options validation | pure unit tests, NSubstitute, `FakeTimeProvider` |
+| Infrastructure.Tests | OpenWeatherMap request/parse/error mapping/timeouts/redaction; repository and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
+| Web.Tests | routing, binding, validation (problem details, page overflow), JSON shape, SPA fallback vs. API 404/405 | `WebApplicationFactory` with substituted ports and a temporary web root |
+| Functions.Tests | the timer binding (every minute, not on startup), the shipped city configuration, delegation and failure propagation | reflection on the binding attributes; the real `appsettings.json` |
+| client (Vitest) | date-range rules, English formatting, chart shaping, tooltip, filters, tables, both pages against a fake API | Testing Library, jsdom |
+| client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), table view, log filters/paging, error state, English UI in a Latvian browser, accessibility | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |
 
-Nothing in the test suite needs SQL Server, Azurite, network access or an API key.
+Nothing in the test suite needs SQL Server, Azurite, network access or an API key. CI also collects code coverage
+(.NET: Microsoft.Testing.Platform coverage, summary on the run page; front end: Vitest v8 coverage).
 
-## 10. Deployment (planned)
+## 10. Deployment
 
-Not set up yet. The intended Azure shape: Functions on the Flex Consumption plan, Web on App Service (Linux), Azure SQL
-(Basic tier - a database written every minute never auto-pauses, so the serverless free offer would be exhausted
-within days), Application Insights, secrets in app settings/Key Vault and Managed Identity for SQL.
+Infrastructure as code in `infra/` (Bicep), driven by the Azure Developer CLI (`azure.yaml`) and the manual
+`Deploy to Azure` workflow (OIDC). Functions on Flex Consumption, Web on App Service (Linux), Azure SQL Basic,
+Key Vault for the API key, Application Insights, one user-assigned managed identity for SQL, Key Vault and Storage.
+Not deployed yet - see [deployment.md](deployment.md) and [ADR 0011](adr/0011-azure-hosting-and-identity.md).

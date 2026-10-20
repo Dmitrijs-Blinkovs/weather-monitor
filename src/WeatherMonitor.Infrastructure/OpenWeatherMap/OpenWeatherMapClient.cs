@@ -39,7 +39,7 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
 
             if (!response.IsSuccessStatusCode)
             {
-                var message = ReadErrorMessage(body) ?? response.ReasonPhrase ?? "Request failed";
+                var message = FirstNonBlank(ReadErrorMessage(body), response.ReasonPhrase) ?? $"HTTP {statusCode}";
                 return WeatherFetchResult.Failure(statusCode, Redact(message, apiKey));
             }
 
@@ -114,6 +114,9 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             return null;
         }
     }
+
+    private static string? FirstNonBlank(params string?[] candidates) =>
+        candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
 
     // The API key is sent in the query string; make sure it never ends up in a stored error message.
     private static string Redact(string message, string apiKey) =>

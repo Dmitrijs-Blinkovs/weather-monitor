@@ -48,7 +48,7 @@ instance is running - find it before starting a second one.
   $c.Open(); $q = $c.CreateCommand(); $q.CommandText = 'SELECT City, Country, MAX(FetchedAtUtc) FROM WeatherSnapshots GROUP BY City, Country'
   $t = New-Object Data.DataTable; $t.Load($q.ExecuteReader()); $c.Close(); $t
   ```
-  Expect London GB, Riga LV, Rome IT. Any `US` row for Rome is legacy data (ADR 0005).
+  Expect London GB, Riga LV, Rome IT. A wrong country means a missing or wrong `CountryCode` (ADR 0005).
 - Browser: open http://localhost:5180/ (redirects to 5173), check **Temperature** and **Fetch log**, and the console has
   no errors besides StrictMode's aborted duplicate requests in development.
 

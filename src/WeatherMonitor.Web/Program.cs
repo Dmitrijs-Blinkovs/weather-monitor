@@ -43,7 +43,11 @@ if (app.Environment.IsDevelopment())
 }
 
 // Unknown API routes are real 404s; every other unknown path is a client-side route of the SPA.
-app.Map("/api/{**path}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound));
+// GET/HEAD only, so a wrong verb on an existing route (e.g. POST /api/logs) still gets 405.
+app.MapMethods(
+    "/api/{**path}",
+    [HttpMethods.Get, HttpMethods.Head],
+    () => Results.Problem(statusCode: StatusCodes.Status404NotFound));
 app.MapFallbackToFile("/index.html");
 
 await app.RunAsync();

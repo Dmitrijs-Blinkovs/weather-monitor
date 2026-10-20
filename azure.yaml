@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Azure Developer CLI (azd) definition: `azd up` provisions infra/ and deploys both services. See docs/deployment.md.
+name: weather-monitor
+metadata:
+  template: weather-monitor@1.0.0
+
+infra:
+  provider: bicep
+  path: infra
+
+services:
+  web:
+    project: src/WeatherMonitor.Web
+    language: dotnet
+    host: appservice
+  functions:
+    project: src/WeatherMonitor.Functions
+    language: dotnet
+    host: function
+
+pipeline:
+  provider: github

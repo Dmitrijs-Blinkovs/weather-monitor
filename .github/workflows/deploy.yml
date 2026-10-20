@@ -1,0 +1,85 @@
+name: Deploy to Azure
+
+# Manual only until the Azure environment is set up (docs/deployment.md). It provisions infra/ with Bicep and
+# deploys both apps with the Azure Developer CLI, authenticating through OpenID Connect - no secrets for Azure.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for Azure login
+  contents: read
+
+concurrency:
+  group: deploy-${{ vars.AZURE_ENV_NAME }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Provision and deploy
+    runs-on: ubuntu-latest
+    # Protect this environment in GitHub (Settings > Environments) with required reviewers.
+    environment:
+      name: production
+      url: ${{ steps.outputs.outputs.web_url }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      WEB_SKU_NAME: ${{ vars.WEB_SKU_NAME || 'B1' }}
+      OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check configuration
+        run: |
+          missing=""
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENV_NAME AZURE_LOCATION OPENWEATHERMAP_API_KEY; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository variables/secrets:$missing (see docs/deployment.md)"
+            exit 1
+          fi
+
+      - uses: Azure/setup-azd@v2
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/weather-monitor.client/package-lock.json
+
+      # The web app publish builds the React client into wwwroot.
+      - name: Install front-end packages
+        working-directory: src/weather-monitor.client
+        run: npm ci
+
+      - name: Log in to Azure (OIDC)
+        run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider "github" --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Provision infrastructure
+        run: azd provision --no-prompt
+
+      - name: Deploy apps
+        run: azd deploy --no-prompt
+
+      - name: Read outputs
+        id: outputs
+        run: echo "web_url=$(azd env get-value WEB_URL)" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent --show-error "${{ steps.outputs.outputs.web_url }}/health"; then
+              echo; echo "Healthy after $attempt attempt(s)"; exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::${{ steps.outputs.outputs.web_url }}/health did not report Healthy"
+          exit 1

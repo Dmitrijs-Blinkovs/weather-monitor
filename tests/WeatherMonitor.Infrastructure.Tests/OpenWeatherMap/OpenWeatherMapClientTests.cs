@@ -93,6 +93,66 @@ public sealed class OpenWeatherMapClientTests
     }
 
     [Fact]
+    public async Task An_error_with_an_empty_message_keeps_its_status_and_falls_back_to_the_reason_phrase()
+    {
+        var result = await CreateClient(Respond(HttpStatusCode.InternalServerError, """{"cod":500,"message":" "}"""))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.HttpStatusCode.ShouldBe(500);
+        result.Error.ShouldBe("Internal Server Error");
+    }
+
+    [Fact]
+    public async Task An_error_without_any_text_is_described_by_its_status_code()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            ReasonPhrase = string.Empty,
+            Content = new StringContent(string.Empty),
+        });
+
+        var result = await CreateClient(handler).GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.HttpStatusCode.ShouldBe(503);
+        result.Error.ShouldBe("HTTP 503");
+    }
+
+    [Fact]
+    public async Task A_timeout_from_the_resilience_pipeline_is_a_failure_without_status()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+            throw new Polly.Timeout.TimeoutRejectedException("The operation didn't complete within the allowed timeout of '00:00:10'."));
+
+        var result = await CreateClient(handler).GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.HttpStatusCode.ShouldBeNull();
+        result.Error.ShouldContain("allowed timeout");
+    }
+
+    [Fact]
+    public async Task An_http_client_timeout_is_a_failure_without_status()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."));
+
+        var result = await CreateClient(handler).GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Request timed out");
+    }
+
+    [Fact]
+    public async Task Cancellation_by_the_caller_is_not_turned_into_a_failure()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var handler = new StubHttpMessageHandler(_ => throw new TaskCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(() =>
+            CreateClient(handler).GetCurrentWeatherAsync("Riga", null, cancellation.Token));
+    }
+
+    [Fact]
     public async Task A_response_missing_required_fields_is_a_failure()
     {
         var result = await CreateClient(Respond(HttpStatusCode.OK, """{"main":{"temp":5},"dt":1792400400}"""))
