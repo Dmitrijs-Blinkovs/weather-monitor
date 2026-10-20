@@ -66,6 +66,11 @@ Rules that keep it this way:
   DTOs with `AsNoTracking()`, writes go through the aggregate.
 - Hosts never touch `WeatherDbContext` directly; even the health checks are registered by Infrastructure
   (`AddPersistenceHealthChecks`).
+- Business rules live in the model, not at the edges: invariants in Domain (section 3), use-case rules in Application
+  (`WeatherHistoryRules`, `FetchLogQuery`). Adapters and request models only translate a violation - into a failed
+  attempt or a `400` - using the same rules and constants.
+- Enforced by tests: `DependencyRuleTests` (Domain references only the BCL; Application no infrastructure or host
+  technology) and `ArchitectureTests` (controllers depend only on Application ports).
 
 ## 3. Domain model and invariants
 
@@ -77,7 +82,9 @@ Rules that keep it this way:
 | Timestamps are UTC; `Kind=Unspecified` is rejected, `Local` is converted | `FetchAttempt.EnsureUtc` |
 | Duration is non-negative, stored as whole milliseconds | `FetchAttempt` constructor |
 | Error messages: control characters replaced (no log forging), blank becomes "Unknown error", at most 2000 characters | `FetchAttempt.SanitizeErrorMessage` |
-| A snapshot copies the attempt's city and fetch time; raw payload is required | `WeatherSnapshot` constructor |
+| HTTP status, when known, is 100-599; a successful attempt has none or a 2xx | `FetchAttempt` constructor, `Succeeded` |
+| An observation has a two-letter ISO 3166 country code (stored upper case), finite and plausible temperatures (-100..70 deg C), min <= max, a UTC time and a raw payload of at most 64 K characters (rejected, never cut) | `CurrentWeather` (value object; `TryCreate` returns the reason instead of throwing) |
+| A snapshot copies the attempt's city and fetch time and a valid `CurrentWeather` | `WeatherSnapshot` constructor |
 | Entities are created only through factories (`Succeeded` / `Failed`); setters are private | both entities |
 
 ## 4. Data model
@@ -88,17 +95,22 @@ FetchAttempts                                   WeatherSnapshots
 Id              bigint identity  PK             Id              bigint identity  PK
 City            nvarchar(100)                   FetchAttemptId  bigint  FK -> FetchAttempts(Id), unique, cascade
 AttemptedAtUtc  datetime2                       City            nvarchar(100)
-IsSuccess       bit                             Country         nvarchar(8)
+IsSuccess       bit                             Country         char(2)    (ISO 3166 alpha-2)
 HttpStatusCode  int null                        Temperature     float      (deg C)
 ErrorMessage    nvarchar(2000) null             TemperatureMin  float      (deg C)
 DurationMs      int                             TemperatureMax  float      (deg C)
-                                                ObservedAtUtc   datetime2  (provider "dt" = last update time)
+ResponseBody    nvarchar(max) null              ObservedAtUtc   datetime2  (provider "dt" = last update time)
+  (body of a failed response, key redacted)
 IX (AttemptedAtUtc)                             FetchedAtUtc    datetime2
 IX (City, AttemptedAtUtc)                       RawPayload      nvarchar(max)  (verbatim JSON)
 IX (IsSuccess, AttemptedAtUtc)
                                                 IX (ObservedAtUtc, City) INCLUDE (Country, Temperature, TemperatureMin, TemperatureMax)
 ```
 
+- The full payload is the response body exactly as received: `WeatherSnapshots.RawPayload` for a success,
+  `FetchAttempts.ResponseBody` for a failure that had a body (the API key is redacted first, because an error page of a
+  proxy may echo the request URL). Neither is ever returned by the API. `nvarchar` because payloads contain non-ASCII
+  text (OpenWeatherMap returns local city names with diacritics).
 - Every fetch is stored (one row per city per minute), as the assignment requires: ~4,300 attempts and ~4,300
   snapshots per day for three cities.
 - The chart's covering index lets the history query run without touching `RawPayload`; `(IsSuccess, AttemptedAtUtc)`
@@ -131,15 +143,16 @@ Failure handling:
 
 | Failure | Result |
 |---|---|
-| HTTP 4xx/5xx (e.g. 401 inactive key, 404 unknown city, 429 rate limit) | failed attempt with status code and the provider's `message` (or the reason phrase, or "HTTP nnn") |
+| HTTP 4xx/5xx (e.g. 401 inactive key, 404 unknown city, 429 rate limit) | failed attempt with status code and the provider's `message` (or the reason phrase, or "HTTP nnn"); the body is kept in `ResponseBody` |
 | 200 with a content type other than `application/json` | failed attempt "Unexpected content type ..." |
-| 200 with unparsable or incomplete JSON | failed attempt with status 200 and the reason |
-| 200 with implausible temperatures (outside -100..70 deg C, or min > max) | failed attempt "Implausible temperatures in response ..." |
+| 200 with unparsable or incomplete JSON | failed attempt with status 200 and the reason; the body is kept in `ResponseBody` |
+| 200 with data the domain rejects (implausible temperatures, missing country) | failed attempt with the domain's reason, e.g. "Implausible temperatures: ..." (`CurrentWeather.TryCreate`) |
 | Response larger than 64 KB, network error | failed attempt "Request failed: ...", API key redacted |
 | Timeout / circuit open (resilience pipeline) | failed attempt, no status code |
 | Unexpected exception in the provider | caught by the service, failed attempt "Unexpected error (Type)"; the exception text is only logged |
 | Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved with a short separate timeout, then the cancellation is reported to the runtime |
-| Database unavailable | SQL retries (3 times, at most 5 s apart); then the invocation fails, the runtime logs it and the next minute retries |
+| Database unavailable or rejects the data (full, schema mismatch) | SQL retries transient errors (3 times, at most 5 s apart); then an error log "Storing N fetch attempts failed", the invocation fails (the runtime logs it too) and the next minute retries. The attempts are not counted in the metrics, so the "no weather data" alert fires |
+| `dt` outside the DateTime range | failed attempt "Observation time out of range" (checked before the domain sees it) |
 
 Resilience (`AddStandardResilienceHandler`): 10 s per attempt, 2 retries with backoff for transient errors (5xx, 408,
 429, timeouts), 30 s total per city; the circuit breaker opens for 45 s when at least half of at least 6 calls within
@@ -172,10 +185,15 @@ into one point per real observation. `WeatherHistoryService` then groups by city
 point per observation time (a revised observation with the same `dt` would otherwise appear twice) and computes the card
 summary: latest temperature and country, lowest `temp_min`, highest `temp_max`, last update time.
 
-Validation lives in request models (`FetchLogRequest`, `WeatherHistoryRequest : IValidatableObject`) and returns
-`400 application/problem+json` through `[ApiController]`. The range rule is shared with the service
-(`WeatherHistoryRules`), which also guards itself. `FetchLogRequest.MaxPage` (1,000) bounds `OFFSET` scans and must
-match `MAX_LOG_PAGE` in the client.
+Fetch-log paging is a deferred join: `OFFSET @skip ... FETCH NEXT @take` runs over the narrow time index (keys only),
+then only the rows of the page are read. Measured on 90 days of data (388,800 attempts): page 1,000 x 200 reads
+~1,500 pages instead of ~640,000 with a plain OFFSET over full rows. The `COUNT(*)` for the page total (~1,750 pages)
+is now the larger part of an uncached log request.
+
+Request models (`FetchLogRequest`, `WeatherHistoryRequest : IValidatableObject`) validate against the Application's
+rules and return `400 application/problem+json` through `[ApiController]`; the rules themselves guard the use cases too:
+`WeatherHistoryRules` (range, used by the service) and `FetchLogQuery` (page 1-1,000, page size 1-200, enforced by its
+constructor). `FetchLogQuery.MaxPage` bounds `OFFSET` scans and must match `MAX_LOG_PAGE` in the client.
 
 JSON: camelCase, enums as strings, timestamps as UTC with `Z`.
 
@@ -234,7 +252,8 @@ src/
   console as usual (with `UseFunctionsWorkerDefaults()` the host stops forwarding them). Functions: `host.json`
   `telemetryMode: OpenTelemetry`, `UseFunctionsWorkerDefaults()`, HttpClient instrumentation (query strings redacted).
   Web: `UseAzureMonitor()`.
-- **Metrics** (meter `WeatherMonitor.Ingestion`): `weather.fetch.attempts` (counter) and `weather.fetch.duration`
+- **Metrics** (meter `WeatherMonitor.Ingestion`), recorded once the attempts are stored: `weather.fetch.attempts`
+  (counter) and `weather.fetch.duration`
   (histogram, ms), both tagged `city` and `outcome` (`success` / `failure`).
 - **Health:** `/health/live` and `/health` (section 7). `DataFreshnessHealthCheck` reports `Degraded` when the newest
   successful attempt is older than 10 minutes - the case where every invocation "succeeds" but no data arrives.
@@ -264,9 +283,9 @@ an out-of-range retention stops the host with a message that says what to set.
 
 | Project | What it proves | How |
 |---|---|---|
-| Application.Tests | domain invariants and error-text sanitising; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
-| Infrastructure.Tests | OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
-| Web.Tests | routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression | `WebApplicationFactory` with substituted ports and a temporary web root |
+| Application.Tests | domain invariants (`FetchAttempt`, `CurrentWeather`) and error-text sanitising; query limits; the dependency rule; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
+| Infrastructure.Tests | the data-model contract (every text column has the length the domain validates, datetime2, float, char(2)); OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
+| Web.Tests | controllers depend only on Application ports; routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression | `WebApplicationFactory` with substituted ports and a temporary web root |
 | Functions.Tests | both timer bindings (every minute, daily; not on startup), the shipped configuration (cities, retention), delegation and failure propagation | reflection on the binding attributes; the real `appsettings.json` |
 | client (Vitest) | date-range rules and rounding, English formatting, chart shaping, downsampling, tooltip, filters, tables and "show more", paging cap, error boundary, both pages against a fake API | Testing Library, jsdom |
 | client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), table view, log filters/paging, error state, English UI in a Latvian browser, accessibility, no CSP violations | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |

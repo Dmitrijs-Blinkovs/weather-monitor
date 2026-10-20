@@ -31,6 +31,15 @@ OpenWeatherMap and SQL calls from the function.
   `UseFunctionsWorkerDefaults()` the worker reports its own telemetry and the host stops forwarding worker logs, so
   without an exporter the console would show no application log at all (found in the live run of 2026-10-20).
 
+## Amendment (2026-10-20)
+
+- `weather.fetch.attempts` and `weather.fetch.duration` are recorded only after the run is stored. When the database
+  rejects the writes (down, full, schema mismatch), no success is counted, so the alert fires; the service also logs
+  "Storing N fetch attempts failed" as an error before the invocation fails.
+- Verified locally against a fake ingestion endpoint (`APPLICATIONINSIGHTS_CONNECTION_STRING` pointing at localhost):
+  both hosts export logs (including the service's own messages), metrics (including `weather.fetch.*`), requests and
+  dependencies (OpenWeatherMap, SQL).
+
 ## Alternatives considered
 
 - Classic Application Insights SDK: its dependency collector records full URLs, which would include the API key.

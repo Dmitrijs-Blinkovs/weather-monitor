@@ -20,7 +20,7 @@ public sealed class IngestionMetrics
 
         var meter = meterFactory.Create(MeterName);
         _attempts = meter.CreateCounter<long>(
-            "weather.fetch.attempts", unit: "{attempt}", description: "Weather fetch attempts by city and outcome.");
+            "weather.fetch.attempts", unit: "{attempt}", description: "Stored weather fetch attempts by city and outcome.");
         _duration = meter.CreateHistogram<double>(
             "weather.fetch.duration", unit: "ms", description: "Duration of a weather fetch attempt.");
     }

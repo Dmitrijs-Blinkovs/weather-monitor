@@ -12,12 +12,12 @@ internal static class TestData
         string country = "GB",
         DateTime? observedAtUtc = null) =>
         new(
-            Country: country,
-            Temperature: temperature,
-            TemperatureMin: temperature - 1,
-            TemperatureMax: temperature + 1,
-            ObservedAtUtc: observedAtUtc ?? Now.AddMinutes(-5),
-            RawPayload: """{"name":"Test","main":{"temp":11.5}}""");
+            country: country,
+            temperature: temperature,
+            temperatureMin: temperature - 1,
+            temperatureMax: temperature + 1,
+            observedAtUtc: observedAtUtc ?? Now.AddMinutes(-5),
+            rawPayload: """{"name":"Test","main":{"temp":11.5}}""");
 
     public static WeatherObservation Observation(
         string city,

@@ -1,9 +1,12 @@
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using NSubstitute.ExceptionExtensions;
 using WeatherMonitor.Application.Abstractions;
 using WeatherMonitor.Application.Ingestion;
 using WeatherMonitor.Domain;
@@ -91,6 +94,17 @@ public sealed class WeatherIngestionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_city_keeps_the_providers_response_body()
+    {
+        _provider.GetCurrentWeatherAsync("Rome", Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(WeatherFetchResult.Failure(200, "Response body is not valid JSON", "<html>maintenance</html>"));
+
+        await CreateService().IngestAsync(TestContext.Current.CancellationToken);
+
+        _stored.Single(attempt => attempt.City == "Rome").ResponseBody.ShouldBe("<html>maintenance</html>");
+    }
+
+    [Fact]
     public async Task An_unexpected_provider_exception_is_logged_as_a_failure_instead_of_aborting_the_run()
     {
         _provider.GetCurrentWeatherAsync("London", Arg.Any<string?>(), Arg.Any<CancellationToken>())
@@ -165,14 +179,34 @@ public sealed class WeatherIngestionServiceTests : IDisposable
         measurements.Count(m => (string?)m.Tags["outcome"] == "success").ShouldBe(2);
     }
 
+    [Fact]
+    public async Task A_run_the_database_rejects_is_logged_as_an_error_and_not_counted_as_stored_data()
+    {
+        // The "no weather data" alert counts successful attempts; they must only count once they are stored.
+        var meterFactory = _services.GetRequiredService<IMeterFactory>();
+        using var attempts = new MetricCollector<long>(meterFactory, IngestionMetrics.MeterName, "weather.fetch.attempts");
+        var logger = new FakeLogger<WeatherIngestionService>();
+        _repository.AddRangeAsync(Arg.Any<IReadOnlyCollection<FetchAttempt>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("String or binary data would be truncated."));
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            CreateService(logger: logger).IngestAsync(TestContext.Current.CancellationToken));
+
+        attempts.GetMeasurementSnapshot().ShouldBeEmpty();
+        logger.Collector.GetSnapshot().ShouldContain(record =>
+            record.Level == LogLevel.Error && record.Exception is InvalidOperationException);
+    }
+
     public void Dispose() => _services.Dispose();
 
-    private WeatherIngestionService CreateService(CityOptions[]? cities = null) =>
+    private WeatherIngestionService CreateService(
+        CityOptions[]? cities = null,
+        ILogger<WeatherIngestionService>? logger = null) =>
         new(
             _provider,
             _repository,
             Options.Create(new WeatherIngestionOptions { Cities = [.. cities ?? Cities] }),
             _timeProvider,
             new IngestionMetrics(_services.GetRequiredService<IMeterFactory>()),
-            NullLogger<WeatherIngestionService>.Instance);
+            logger ?? NullLogger<WeatherIngestionService>.Instance);
 }

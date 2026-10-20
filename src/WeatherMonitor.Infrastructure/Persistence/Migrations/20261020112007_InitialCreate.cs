@@ -22,7 +22,8 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
                     IsSuccess = table.Column<bool>(type: "bit", nullable: false),
                     HttpStatusCode = table.Column<int>(type: "int", nullable: true),
                     ErrorMessage = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    DurationMs = table.Column<int>(type: "int", nullable: false)
+                    DurationMs = table.Column<int>(type: "int", nullable: false),
+                    ResponseBody = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -37,7 +38,7 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     FetchAttemptId = table.Column<long>(type: "bigint", nullable: false),
                     City = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Country = table.Column<string>(type: "nvarchar(8)", maxLength: 8, nullable: false),
+                    Country = table.Column<string>(type: "char(2)", unicode: false, fixedLength: true, maxLength: 2, nullable: false),
                     Temperature = table.Column<double>(type: "float", nullable: false),
                     TemperatureMin = table.Column<double>(type: "float", nullable: false),
                     TemperatureMax = table.Column<double>(type: "float", nullable: false),
@@ -65,6 +66,11 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
                 name: "IX_FetchAttempts_City_AttemptedAtUtc",
                 table: "FetchAttempts",
                 columns: new[] { "City", "AttemptedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FetchAttempts_IsSuccess_AttemptedAtUtc",
+                table: "FetchAttempts",
+                columns: new[] { "IsSuccess", "AttemptedAtUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_WeatherSnapshots_FetchAttemptId",

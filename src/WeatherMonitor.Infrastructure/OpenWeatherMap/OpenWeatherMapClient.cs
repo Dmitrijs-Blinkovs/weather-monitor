@@ -17,10 +17,6 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
 {
     private const string Redacted = "***";
 
-    // Plausibility bounds for air temperature in degrees Celsius (records are about -90 and +57).
-    private const double MinPlausibleCelsius = -100;
-    private const double MaxPlausibleCelsius = 70;
-
     public async Task<WeatherFetchResult> GetCurrentWeatherAsync(
         string city,
         string? countryCode,
@@ -41,21 +37,25 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             var statusCode = (int)response.StatusCode;
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
+            // A failure keeps the body for diagnosis; an error page of a proxy may echo the request URL with the key.
+            var redactedBody = Redact(body, apiKey);
+
             if (!response.IsSuccessStatusCode)
             {
                 var message = FirstNonBlank(ReadErrorMessage(body), response.ReasonPhrase) ?? $"HTTP {statusCode}";
-                return WeatherFetchResult.Failure(statusCode, Redact(message, apiKey));
+                return WeatherFetchResult.Failure(statusCode, Redact(message, apiKey), redactedBody);
             }
 
             var mediaType = response.Content.Headers.ContentType?.MediaType;
             if (!string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
             {
-                return WeatherFetchResult.Failure(statusCode, $"Unexpected content type '{mediaType ?? "none"}'");
+                return WeatherFetchResult.Failure(
+                    statusCode, $"Unexpected content type '{mediaType ?? "none"}'", redactedBody);
             }
 
             return TryParse(body, out var weather, out var parseError)
                 ? WeatherFetchResult.Success(statusCode, weather)
-                : WeatherFetchResult.Failure(statusCode, parseError);
+                : WeatherFetchResult.Failure(statusCode, parseError, redactedBody);
         }
         catch (HttpRequestException exception)
         {
@@ -102,23 +102,24 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             return false;
         }
 
-        if (!IsPlausible(temp) || !IsPlausible(tempMin) || !IsPlausible(tempMax) || tempMin > tempMax)
+        // Unix seconds must fit a DateTime (years 1-9999) before the domain can judge them.
+        if (dt < DateTimeOffset.MinValue.ToUnixTimeSeconds() || dt > DateTimeOffset.MaxValue.ToUnixTimeSeconds())
         {
-            error = string.Create(
-                CultureInfo.InvariantCulture,
-                $"Implausible temperatures in response: temp {temp}, temp_min {tempMin}, temp_max {tempMax}");
+            error = string.Create(CultureInfo.InvariantCulture, $"Observation time out of range: dt {dt}");
             return false;
         }
 
-        weather = new CurrentWeather(
+        // The domain decides what a valid observation is (plausible temperatures, country code); a violation becomes a
+        // failed attempt with the domain's reason instead of an exception.
+        return CurrentWeather.TryCreate(
             country,
             temp,
             tempMin,
             tempMax,
             DateTimeOffset.FromUnixTimeSeconds(dt).UtcDateTime,
-            body);
-        error = null;
-        return true;
+            body,
+            out weather,
+            out error);
     }
 
     private static string? ReadErrorMessage(string body)
@@ -132,9 +133,6 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             return null;
         }
     }
-
-    private static bool IsPlausible(double celsius) =>
-        double.IsFinite(celsius) && celsius is >= MinPlausibleCelsius and <= MaxPlausibleCelsius;
 
     private static string? FirstNonBlank(params string?[] candidates) =>
         candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));

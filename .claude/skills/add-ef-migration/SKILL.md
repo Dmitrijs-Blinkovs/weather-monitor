@@ -9,8 +9,10 @@ description: Change what Weather Monitor stores (entity property, column, index,
 
 - Domain entity in `src/WeatherMonitor.Domain` (`FetchAttempt`, `WeatherSnapshot`, `CurrentWeather`). Keep setters
   private; set values through the constructors/factories and enforce invariants there.
-- Mapping in `src/WeatherMonitor.Infrastructure/Persistence/Configurations/*Configuration.cs`: max lengths, required,
-  indexes. Timestamps are `DateTime` UTC named `...Utc` (ADR 0006).
+- Mapping in `src/WeatherMonitor.Infrastructure/Persistence/Configurations/*Configuration.cs`: only what the EF Core
+  conventions do not give - max lengths (every string used in an index key needs one) and indexes. Nullability follows
+  the C# type (`string` vs `string?`); tables, keys and the one-to-one snapshot come from conventions. Timestamps are
+  `DateTime` UTC named `...Utc` (ADR 0006).
 - A new payload field: extract it in `OpenWeatherMapClient.TryParse` (add it to `OpenWeatherMapResponse`) and carry it
   through `CurrentWeather` -> `WeatherSnapshot`. Decide whether a missing field fails the attempt or is nullable.
 

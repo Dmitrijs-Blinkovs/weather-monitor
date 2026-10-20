@@ -1,6 +1,6 @@
 import { formatInteger } from '../../lib/format';
 
-/** Deepest page the API serves (FetchLogRequest.MaxPage on the server); older entries are reached by filtering. */
+/** Deepest page the API serves (FetchLogQuery.MaxPage on the server); older entries are reached by filtering. */
 export const MAX_LOG_PAGE = 1000;
 
 interface PaginationProps {

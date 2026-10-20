@@ -40,7 +40,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 |---|---|---|
 | API1/API5 object- and function-level authorisation | n/a | Public, read-only, no per-user objects. |
 | API2 Broken authentication | n/a | No authentication by design. |
-| API3 Broken object property level authorisation | OK | DTOs expose display fields only; raw payloads are never returned; request models are query-only (no mass assignment). |
+| API3 Broken object property level authorisation | OK | DTOs expose display fields only; raw payloads and failed response bodies (stored with the API key redacted) are never returned; request models are query-only (no mass assignment). |
 | API4 Unrestricted resource consumption | OK | 120 requests/minute per client on `/api/*` and `/health` (429 + `Retry-After`), global concurrency limit (64 + queue 128), output cache (history 60 s, log 10 s, cities 5 min), `pageSize` <= 200, `page` <= 1,000, history range <= 31 days, index for result filters, response compression. |
 | API6 Unrestricted access to sensitive business flows | n/a | No business flows. |
 | API7 Server-side request forgery | OK | See A10. |

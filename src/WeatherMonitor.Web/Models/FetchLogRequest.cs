@@ -8,18 +8,12 @@ namespace WeatherMonitor.Web.Models;
 public sealed class FetchLogRequest
 {
     public const int DefaultPageSize = 50;
-    public const int MaxPageSize = 200;
 
-    /// <summary>
-    /// Deepest page that can be requested. Deep OFFSET paging costs the database more with every page; older entries
-    /// are reached by filtering (city, result) instead. Must match MAX_LOG_PAGE in the client.
-    /// </summary>
-    public const int MaxPage = 1000;
-
-    [Range(1, MaxPage)]
+    // The limits are the business rules of FetchLogQuery; validating them here turns a violation into a 400.
+    [Range(1, FetchLogQuery.MaxPage)]
     public int Page { get; init; } = 1;
 
-    [Range(1, MaxPageSize)]
+    [Range(1, FetchLogQuery.MaxPageSize)]
     public int PageSize { get; init; } = DefaultPageSize;
 
     [StringLength(FetchAttempt.CityMaxLength)]

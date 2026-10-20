@@ -6,9 +6,39 @@ public enum FetchStatus
     Failure,
 }
 
-/// <param name="Page">1-based page number.</param>
-public sealed record FetchLogQuery(int Page, int PageSize, string? City = null, FetchStatus? Status = null)
+/// <summary>One page of the fetch log. The limits are business rules; the API validates against the same constants.</summary>
+public sealed record FetchLogQuery
 {
+    public const int MaxPageSize = 200;
+
+    /// <summary>
+    /// Deepest page that can be requested. Deep OFFSET paging costs the database more with every page; older entries
+    /// are reached by filtering (city, result) instead. Must match MAX_LOG_PAGE in the client.
+    /// </summary>
+    public const int MaxPage = 1000;
+
+    public FetchLogQuery(int page, int pageSize, string? city = null, FetchStatus? status = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(page, MaxPage);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, MaxPageSize);
+
+        Page = page;
+        PageSize = pageSize;
+        City = city;
+        Status = status;
+    }
+
+    /// <summary>1-based page number.</summary>
+    public int Page { get; }
+
+    public int PageSize { get; }
+
+    public string? City { get; }
+
+    public FetchStatus? Status { get; }
+
     public int Skip => (Page - 1) * PageSize;
 }
 

@@ -8,6 +8,12 @@ public sealed class FetchAttempt
     public const int CityMaxLength = 100;
     public const int ErrorMessageMaxLength = 2000;
 
+    /// <summary>
+    /// Longest response body kept for a failed attempt: the same limit as a successful payload, which the HTTP client
+    /// also enforces, so a real provider body is never cut. Only a provider without such a cap could reach it.
+    /// </summary>
+    public const int ResponseBodyMaxLength = CurrentWeather.RawPayloadMaxLength;
+
     // Used by EF Core when materializing from the database.
     private FetchAttempt()
     {
@@ -18,6 +24,10 @@ public sealed class FetchAttempt
         ArgumentException.ThrowIfNullOrWhiteSpace(city);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(city.Length, CityMaxLength, nameof(city));
         ArgumentOutOfRangeException.ThrowIfLessThan(duration, TimeSpan.Zero);
+        if (httpStatusCode is < 100 or > 599)
+        {
+            throw new ArgumentOutOfRangeException(nameof(httpStatusCode), httpStatusCode, "Not an HTTP status code.");
+        }
 
         City = city;
         AttemptedAtUtc = EnsureUtc(attemptedAtUtc);
@@ -40,6 +50,12 @@ public sealed class FetchAttempt
 
     public int DurationMs { get; private set; }
 
+    /// <summary>
+    /// The provider's response body of a failed attempt, as received (with the API key redacted by the adapter), so a
+    /// changed or broken response can be diagnosed later. A successful attempt keeps its payload in the snapshot.
+    /// </summary>
+    public string? ResponseBody { get; private set; }
+
     public WeatherSnapshot? Snapshot { get; private set; }
 
     public static FetchAttempt Succeeded(
@@ -50,6 +66,11 @@ public sealed class FetchAttempt
         CurrentWeather weather)
     {
         ArgumentNullException.ThrowIfNull(weather);
+        if (httpStatusCode is not (null or (>= 200 and <= 299)))
+        {
+            throw new ArgumentException(
+                $"A successful attempt cannot have HTTP status {httpStatusCode}.", nameof(httpStatusCode));
+        }
 
         var attempt = new FetchAttempt(city, attemptedAtUtc, duration, isSuccess: true, httpStatusCode);
         attempt.Snapshot = new WeatherSnapshot(attempt, weather);
@@ -61,13 +82,17 @@ public sealed class FetchAttempt
         DateTime attemptedAtUtc,
         TimeSpan duration,
         int? httpStatusCode,
-        string errorMessage)
+        string errorMessage,
+        string? responseBody = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
 
         return new FetchAttempt(city, attemptedAtUtc, duration, isSuccess: false, httpStatusCode)
         {
             ErrorMessage = SanitizeErrorMessage(errorMessage),
+            ResponseBody = string.IsNullOrWhiteSpace(responseBody) ? null
+                : responseBody.Length <= ResponseBodyMaxLength ? responseBody
+                : responseBody[..ResponseBodyMaxLength],
         };
     }
 

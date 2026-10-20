@@ -13,7 +13,9 @@ In `src/WeatherMonitor.Application/<Feature>/`:
 - DTOs as `sealed record`s; timestamps `DateTime` UTC with a `...Utc` suffix.
 - A read port `I<Feature>Reader` (what storage must answer). If there is logic beyond a query (grouping, summaries,
   validation), add an `I<Feature>Service` + `internal sealed` implementation, register it in
-  `Application/DependencyInjection.cs`, and keep shared rules in a static `*Rules` class (see `WeatherHistoryRules`).
+  `Application/DependencyInjection.cs`, and keep shared rules in a static `*Rules` class (see `WeatherHistoryRules`)
+  or in the query record's constructor (see `FetchLogQuery`). The request model in Web validates against those rules
+  and constants; it never defines its own limits.
 
 ## 2. Infrastructure
 

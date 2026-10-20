@@ -25,11 +25,6 @@ internal sealed partial class WeatherIngestionService(
         var attempts = await Task.WhenAll(
             options.Value.Cities.Select(city => FetchAsync(city.Name, city.CountryCode, cancellationToken)));
 
-        foreach (var attempt in attempts)
-        {
-            metrics.Record(attempt);
-        }
-
         var summary = new IngestionSummary(
             Succeeded: attempts.Count(attempt => attempt.IsSuccess),
             Failed: attempts.Count(attempt => !attempt.IsSuccess));
@@ -38,14 +33,35 @@ internal sealed partial class WeatherIngestionService(
         {
             // Even a cancelled run is logged: finished cities keep their result, unfinished ones are failures.
             using var saveTimeout = new CancellationTokenSource(SaveTimeoutAfterCancellation);
-            await repository.AddRangeAsync(attempts, saveTimeout.Token);
+            await SaveAsync(attempts, saveTimeout.Token);
             LogIngestionCancelled(logger, summary.Succeeded, summary.Failed);
             cancellationToken.ThrowIfCancellationRequested();
         }
 
-        await repository.AddRangeAsync(attempts, cancellationToken);
+        await SaveAsync(attempts, cancellationToken);
         LogIngestionCompleted(logger, summary.Succeeded, summary.Failed);
         return summary;
+    }
+
+    private async Task SaveAsync(FetchAttempt[] attempts, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await repository.AddRangeAsync(attempts, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The whole run is lost (database down or full, a value the schema rejects). The runtime records the failed
+            // invocation too; this names what was lost. Rethrown so the invocation fails and the next minute retries.
+            LogSaveFailed(logger, exception, attempts.Length);
+            throw;
+        }
+
+        // Counted only once stored: the "no weather data" alert sums successes, so it also fires when writes fail.
+        foreach (var attempt in attempts)
+        {
+            metrics.Record(attempt);
+        }
     }
 
     private async Task<FetchAttempt> FetchAsync(string city, string? countryCode, CancellationToken cancellationToken)
@@ -64,7 +80,8 @@ internal sealed partial class WeatherIngestionService(
             }
 
             LogFetchFailed(logger, city, result.HttpStatusCode, result.Error);
-            return FetchAttempt.Failed(city, attemptedAtUtc, duration, result.HttpStatusCode, result.Error);
+            return FetchAttempt.Failed(
+                city, attemptedAtUtc, duration, result.HttpStatusCode, result.Error, result.ResponseBody);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -93,6 +110,9 @@ internal sealed partial class WeatherIngestionService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Fetching weather for {City} failed with HTTP {StatusCode}: {Error}")]
     private static partial void LogFetchFailed(ILogger logger, string city, int? statusCode, string error);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Storing {Count} fetch attempts failed; the run's data is lost")]
+    private static partial void LogSaveFailed(ILogger logger, Exception exception, int count);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Fetching weather for {City} threw an unexpected exception")]
     private static partial void LogFetchCrashed(ILogger logger, Exception exception, string city);

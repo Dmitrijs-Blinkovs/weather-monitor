@@ -15,6 +15,7 @@ public sealed class FetchAttemptTests
         attempt.HttpStatusCode.ShouldBe(200);
         attempt.DurationMs.ShouldBe(123);
         attempt.ErrorMessage.ShouldBeNull();
+        attempt.ResponseBody.ShouldBeNull();
 
         var snapshot = attempt.Snapshot.ShouldNotBeNull();
         snapshot.City.ShouldBe("Riga");
@@ -36,6 +37,35 @@ public sealed class FetchAttemptTests
         attempt.HttpStatusCode.ShouldBe(401);
         attempt.ErrorMessage.ShouldBe("Invalid API key");
         attempt.Snapshot.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Failed_attempt_keeps_the_response_body_as_received_for_diagnosis()
+    {
+        const string body = "{\"cod\":401,\r\n\"message\":\"Invalid API key\"}";
+
+        var attempt = FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, 401, "Invalid API key", body);
+
+        attempt.ResponseBody.ShouldBe(body);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void A_failure_without_a_response_body_stores_none(string? body)
+    {
+        FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, null, "Request timed out", body)
+            .ResponseBody.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_response_body_beyond_the_limit_is_cut_at_the_limit()
+    {
+        var body = new string('x', FetchAttempt.ResponseBodyMaxLength + 10);
+
+        FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, 500, "error", body)
+            .ResponseBody.ShouldNotBeNull().Length.ShouldBe(FetchAttempt.ResponseBodyMaxLength);
     }
 
     [Fact]
@@ -79,6 +109,22 @@ public sealed class FetchAttemptTests
     {
         Should.Throw<ArgumentException>(() =>
             FetchAttempt.Failed(city, TestData.Now, TimeSpan.Zero, null, "error"));
+    }
+
+    [Fact]
+    public void A_successful_attempt_cannot_carry_an_error_status_code()
+    {
+        Should.Throw<ArgumentException>(() =>
+            FetchAttempt.Succeeded("Riga", TestData.Now, TimeSpan.Zero, 500, TestData.Weather()));
+    }
+
+    [Theory]
+    [InlineData(42)]
+    [InlineData(600)]
+    public void An_impossible_http_status_code_is_rejected(int statusCode)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() =>
+            FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, statusCode, "error"));
     }
 
     [Fact]

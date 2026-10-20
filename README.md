@@ -11,14 +11,14 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Requirement | Where |
 |---|---|
 | Fetch London, Rome, Riga every minute | `src/WeatherMonitor.Functions/FetchWeatherFunction.cs` (timer `0 */1 * * * *`), cities in `appsettings.json` |
-| Store the full payload | `WeatherSnapshots.RawPayload` (verbatim JSON), plus extracted columns for querying |
+| Store the full payload | `WeatherSnapshots.RawPayload`: the response body exactly as received (all fields, not re-serialised), plus extracted columns for querying; a failed attempt keeps the body it got in `FetchAttempts.ResponseBody` (API key redacted) |
 | Store success/failure attempt log | `FetchAttempts`: time, city, result, HTTP status, error, duration - for every attempt, also failed and cancelled ones |
 | UI page with the fetch log | `/fetch-log`: filter by city and result, paging, auto-refresh |
 | UI page with a chart: min/max temperature, country, city, temperature, last update time | `/temperature`: one chart for all cities with a min/max band, a card per city (country, temperature, min/max, last update), tooltip, table view |
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 115 .NET tests (xUnit v3), 54 front-end unit/component tests (Vitest), 19 browser tests (Playwright) |
+| Unit tests | 163 .NET tests (xUnit v3), 54 front-end unit/component tests (Vitest), 19 browser tests (Playwright) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -198,7 +198,8 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 ```
 
 - **Application** - ingestion (parallel fetch, failure isolation, cancellation, timing, country codes, metrics), history
-  grouping and summary, retention batches, options validation, domain invariants and error-text sanitising.
+  grouping and summary, retention batches, options validation, domain invariants (attempts, observations, query
+  limits), error-text sanitising, and the dependency rule between the layers.
 - **Infrastructure** - the OpenWeatherMap client against a stubbed `HttpMessageHandler` (parsing, content type,
   plausibility, error mapping, timeouts, key redaction); repository (including batched deletes) and readers against
   in-memory SQLite with the real EF Core model; migrations in sync with the model; DI composition of both hosts.

@@ -83,6 +83,38 @@ public sealed class OpenWeatherMapClientTests
     }
 
     [Fact]
+    public async Task An_error_keeps_its_response_body_with_the_api_key_redacted()
+    {
+        var body = $"<html>Proxy error for /data/2.5/weather?q=Riga&appid={ApiKey}</html>";
+
+        var result = await CreateClient(Respond(HttpStatusCode.BadGateway, body))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.ResponseBody.ShouldBe("<html>Proxy error for /data/2.5/weather?q=Riga&appid=***</html>");
+    }
+
+    [Fact]
+    public async Task A_successful_status_with_unusable_data_keeps_the_body_that_could_not_be_used()
+    {
+        const string body = """{"dt":1792400400,"main":{"temp":5,"temp_min":7,"temp_max":3},"sys":{"country":"LV"}}""";
+
+        var result = await CreateClient(Respond(HttpStatusCode.OK, body))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ResponseBody.ShouldBe(body);
+    }
+
+    [Fact]
+    public async Task A_successful_fetch_carries_no_failure_body()
+    {
+        var result = await CreateClient(Respond(HttpStatusCode.OK, RigaResponse))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.ResponseBody.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task An_error_without_a_json_body_falls_back_to_the_reason_phrase()
     {
         var result = await CreateClient(Respond(HttpStatusCode.BadGateway, "<html>bad gateway</html>"))
@@ -205,6 +237,18 @@ public sealed class OpenWeatherMapClientTests
     }
 
     [Fact]
+    public async Task An_observation_time_outside_the_date_range_is_a_failure_not_an_exception()
+    {
+        const string body = """{"dt":999999999999999,"main":{"temp":5,"temp_min":4,"temp_max":6},"sys":{"country":"LV"}}""";
+
+        var result = await CreateClient(Respond(HttpStatusCode.OK, body))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Observation time out of range: dt 999999999999999");
+    }
+
+    [Fact]
     public async Task A_response_that_is_not_json_is_a_failure()
     {
         var result = await CreateClient(Respond(HttpStatusCode.OK, "not json"))
@@ -227,6 +271,7 @@ public sealed class OpenWeatherMapClientTests
         result.Error.ShouldStartWith("Request failed: Connection refused");
         result.Error.ShouldNotContain(ApiKey);
         result.Error.ShouldContain("appid=***");
+        result.ResponseBody.ShouldBeNull();
     }
 
     private static StubHttpMessageHandler Respond(HttpStatusCode statusCode, string body) =>

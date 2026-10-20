@@ -6,23 +6,20 @@ namespace WeatherMonitor.Domain;
 /// </summary>
 public sealed class WeatherSnapshot
 {
-    public const int CountryMaxLength = 8;
-
     // Used by EF Core when materializing from the database.
     private WeatherSnapshot()
     {
     }
 
+    // CurrentWeather is valid by construction, so its values are copied as they are.
     internal WeatherSnapshot(FetchAttempt attempt, CurrentWeather weather)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(weather.RawPayload);
-
         City = attempt.City;
-        Country = weather.Country.Length <= CountryMaxLength ? weather.Country : weather.Country[..CountryMaxLength];
+        Country = weather.Country;
         Temperature = weather.Temperature;
         TemperatureMin = weather.TemperatureMin;
         TemperatureMax = weather.TemperatureMax;
-        ObservedAtUtc = FetchAttempt.EnsureUtc(weather.ObservedAtUtc);
+        ObservedAtUtc = weather.ObservedAtUtc;
         FetchedAtUtc = attempt.AttemptedAtUtc;
         RawPayload = weather.RawPayload;
     }

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using WeatherMonitor.Application.Abstractions;
 using WeatherMonitor.Application.FetchLog;
 using WeatherMonitor.Application.History;
+using WeatherMonitor.Domain;
 using WeatherMonitor.Infrastructure.OpenWeatherMap;
 using WeatherMonitor.Infrastructure.Persistence;
 
@@ -17,8 +18,11 @@ public static class DependencyInjection
     public const string ConnectionStringName = "WeatherDb";
     public const string ApplyMigrationsOnStartupKey = "Database:ApplyMigrationsOnStartup";
 
-    /// <summary>A current-weather response is about 500 bytes; anything far larger is refused, not buffered.</summary>
-    public const long MaxWeatherResponseBytes = 64 * 1024;
+    /// <summary>
+    /// A current-weather response is about 500 bytes; anything far larger is refused, not buffered. Equal to the
+    /// domain's payload limit (a UTF-8 body never has more characters than bytes), so an accepted body always fits.
+    /// </summary>
+    public const long MaxWeatherResponseBytes = CurrentWeather.RawPayloadMaxLength;
 
     /// <summary>Registers the SQL Server database context, repositories and readers.</summary>
     public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)

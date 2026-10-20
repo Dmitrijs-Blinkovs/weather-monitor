@@ -27,7 +27,7 @@ Trigger a run on demand: `POST http://localhost:7071/admin/functions/FetchWeathe
 ## 2. Read the failed attempts
 
 ```sql
-SELECT TOP 20 AttemptedAtUtc, City, HttpStatusCode, ErrorMessage, DurationMs
+SELECT TOP 20 AttemptedAtUtc, City, HttpStatusCode, ErrorMessage, DurationMs, ResponseBody
 FROM FetchAttempts WHERE IsSuccess = 0 ORDER BY Id DESC;
 ```
 
@@ -49,7 +49,8 @@ FROM FetchAttempts WHERE IsSuccess = 0 ORDER BY Id DESC;
 - Wrong country (e.g. Rome `US`): city without `CountryCode` (ADR 0005). Fix config; old rows keep the wrong
   country - offer the user to delete them or reset the local database (`docs/getting-started.md`, section 9). Never
   delete data without the user's explicit consent.
-- Inspect a payload: `SELECT TOP 1 RawPayload FROM WeatherSnapshots WHERE City = 'Rome' ORDER BY Id DESC`
+- Inspect a payload: `SELECT TOP 1 RawPayload FROM WeatherSnapshots WHERE City = 'Rome' ORDER BY Id DESC`; for a
+  failure, `FetchAttempts.ResponseBody` holds the body that could not be used (API key redacted)
   (`JSON_VALUE(RawPayload, '$.coord.lat')` etc.).
 - Chart "not updating": expected between provider updates (~10 min); compare `ObservedAtUtc` with `FetchedAtUtc`.
 - Old rows gone: the daily `PurgeOldData` function deletes history older than `Retention:Days` (90) - by design

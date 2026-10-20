@@ -67,7 +67,15 @@ azure.yaml                        Azure Developer CLI services: web -> App Servi
   `FetchAttempt.Succeeded/Failed` -> `IFetchAttemptRepository.AddRangeAsync` (one transaction for the run).
 - **Read path:** controller -> `IFetchLogReader` / `IWeatherHistoryService` -> EF Core projections (no tracking, no payload).
 - **Expected failures are values, not exceptions:** the provider returns `WeatherFetchResult.Failure(...)`; only bugs throw.
-- **Time is UTC everywhere** (`DateTime` with `Kind=Utc`, `...Utc` suffix); an EF converter restores the kind on read.
+- **Domain and data model describe the same data:** EF configurations use the domain's constants, and
+  `DataModelContractTests` fails when a text column's length and its domain rule drift apart (or a new text column has
+  no decided length). Metrics count *stored* attempts, so a failing database also triggers the data alert.
+- **Business rules live in the model:** invariants in Domain (`FetchAttempt`, `CurrentWeather` - plausibility, country,
+  status codes), use-case rules in Application (`WeatherHistoryRules`, `FetchLogQuery` limits). Adapters
+  (`CurrentWeather.TryCreate`) and request models (`[Range(1, FetchLogQuery.MaxPage)]`) reuse them, never copy them.
+  `DependencyRuleTests` and `ArchitectureTests` fail if a layer reaches outwards.
+- **Time is UTC everywhere** (`DateTime` with `Kind=Utc`, `...Utc` suffix); an EF converter restores the kind on read
+  and rejects `Kind=Unspecified`, also in query parameters.
 - **Observability:** OpenTelemetry in both hosts (exported only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set),
   ingestion metrics, `/health/live` (process) vs. `/health` (database + a successful fetch within 10 minutes).
 - **Security:** every input is capped, every response carries strict security headers, `/api/*` is rate-limited and
@@ -102,7 +110,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 
 **C#**
 - File-scoped namespaces, primary constructors, `sealed` by default, `internal` for implementations (tests use
-  `InternalsVisibleTo`). Private fields `_camelCase`. `.editorconfig` is enforced in the build.
+  `InternalsVisibleTo`). Private fields `_camelCase`; `const` and `static readonly` fields PascalCase.
+  `.editorconfig` is enforced in the build, naming rules included (`dotnet_diagnostic.IDE1006.severity`).
 - Logging through `[LoggerMessage]` source-generated methods, never string interpolation in log calls.
 - Options classes bind a named section, validate with DataAnnotations/`IValidatableObject` and `ValidateOnStart()`.
 - New package: add `<PackageVersion>` to `Directory.Packages.props`, then a version-less `<PackageReference>`.
@@ -150,7 +159,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - The API key travels in the query string: keep `RemoveAllLoggers()` on the client and `Redact(...)` on messages.
 - `[Produces("application/json")]` on controllers turns RFC 7807 errors into `application/json` - do not add it.
 - Unknown `/api/*` routes must stay 404 (`app.Map("/api/{**path}", ...)` before `MapFallbackToFile`).
-- `DateTime` with `Kind=Unspecified` is rejected by the domain on purpose. SQLite cannot order `DateTimeOffset`,
+- `DateTime` with `Kind=Unspecified` is rejected by the domain and by `UtcDateTimeConverter` (writes and query
+  parameters) on purpose: read as local time it would shift by the machine's offset. SQLite cannot order `DateTimeOffset`,
   which is one reason the model uses UTC `DateTime`.
 - xUnit v3 runs on Microsoft.Testing.Platform: use `dotnet test --solution/--project`, not the old VSTest switches.
 - In development the UI is served by Vite on 5173; deep links typed directly on 5180 return 404 (only `/` redirects).
@@ -158,11 +168,14 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - A brand-new OpenWeatherMap key returns 401 for up to ~2 hours.
 - Output caching: two identical API requests within the cache window return the same body. Web tests that change the
   substituted data between requests must vary the query (or the test fails for a "wrong" reason).
+- Fetch-log paging is a deferred join (`FetchLogReader`): OFFSET over index keys, then the page's rows. Keep the
+  subquery inside the lambda, or Skip/Take become SQL constants (one plan per page). Check a query change on SQL
+  Server, not only SQLite: the tests prove results, not plans.
 - Output-cache locking (request coalescing) is off on purpose: with it, a request that waits for an identical one
   inherits that request's cancellation and returns 500 when the browser aborts the first (React StrictMode always does).
 - The CSP is defined twice: `Web/Security/SecurityHeaders.cs` (production) and `vite.config.ts` (`vite preview` for
   Playwright). Change both; inline `<script>`/`style=""` attributes violate it (React `style` props are fine).
-- `FetchLogRequest.MaxPage` (API) and `MAX_LOG_PAGE` (client `Pagination.tsx`) must stay equal.
+- `FetchLogQuery.MaxPage` (Application) and `MAX_LOG_PAGE` (client `Pagination.tsx`) must stay equal.
 - `/health` is rate-limited and depends on data freshness; probes that only need "process alive" use `/health/live`.
 - Two managed identities in Azure: the web app can only read the database (`db_datareader`, granted by the function
   after migrating). Anything the web app must write needs a deliberate change (ADR 0015).

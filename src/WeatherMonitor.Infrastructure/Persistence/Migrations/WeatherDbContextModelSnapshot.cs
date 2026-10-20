@@ -51,6 +51,9 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsSuccess")
                         .HasColumnType("bit");
 
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AttemptedAtUtc");
@@ -59,7 +62,7 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("IsSuccess", "AttemptedAtUtc");
 
-                    b.ToTable("FetchAttempts", (string)null);
+                    b.ToTable("FetchAttempts");
                 });
 
             modelBuilder.Entity("WeatherMonitor.Domain.WeatherSnapshot", b =>
@@ -77,8 +80,10 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Country")
                         .IsRequired()
-                        .HasMaxLength(8)
-                        .HasColumnType("nvarchar(8)");
+                        .HasMaxLength(2)
+                        .IsUnicode(false)
+                        .HasColumnType("char(2)")
+                        .IsFixedLength();
 
                     b.Property<long>("FetchAttemptId")
                         .HasColumnType("bigint");
@@ -111,7 +116,7 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("ObservedAtUtc", "City"), new[] { "Country", "Temperature", "TemperatureMin", "TemperatureMax" });
 
-                    b.ToTable("WeatherSnapshots", (string)null);
+                    b.ToTable("WeatherSnapshots");
                 });
 
             modelBuilder.Entity("WeatherMonitor.Domain.WeatherSnapshot", b =>
