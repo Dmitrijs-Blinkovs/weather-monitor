@@ -144,28 +144,29 @@ the whole environment. Details, operations and hardening: [docs/deployment.md](d
 
 ```mermaid
 flowchart LR
-    subgraph rg["Resource group (one per azd environment)"]
-        FA["Function app<br/>Flex Consumption<br/>FetchWeather, PurgeOldData"]
+    GH["GitHub Actions<br/>OIDC, no secrets"]
+    U((Browser))
+    subgraph rg["Resource group, one per azd environment"]
+        direction LR
         WA["App Service (Linux)<br/>MVC API + React"]
+        FA["Function app<br/>Flex Consumption<br/>FetchWeather, PurgeOldData"]
+        IDW(["identity id-web"])
+        IDF(["identity id-func"])
         SQL[("Azure SQL<br/>Entra-only auth")]
         KV["Key Vault<br/>API key"]
         ST[("Storage<br/>no shared keys")]
-        AI["Application Insights<br/>Log Analytics, alert"]
-        IDF(["identity id-func"])
-        IDW(["identity id-web"])
+        AI["Application Insights<br/>Log Analytics, alert<br/>(OpenTelemetry from both apps)"]
     end
     OWM[(OpenWeatherMap)]
-    GH["GitHub Actions<br/>OIDC, no secrets"]
-    FA -.-> IDF
-    WA -.-> IDW
-    IDF -- "admin: migrations" --> SQL
+    GH -- "azd provision + deploy" --> rg
+    U -- HTTPS --> WA
+    WA -.- IDW
+    FA -.- IDF
     IDW -- "db_datareader" --> SQL
+    IDF -- "admin: migrations" --> SQL
     IDF -- "Secrets User" --> KV
     IDF -- "Blob Data Owner" --> ST
     FA -- HTTPS --> OWM
-    FA -- OpenTelemetry --> AI
-    WA -- OpenTelemetry --> AI
-    GH -- "azd provision + deploy" --> rg
 ```
 
 | Area | What is in place | Read |
