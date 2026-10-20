@@ -49,6 +49,21 @@ public sealed class FetchAttemptTests
     }
 
     [Fact]
+    public void Control_characters_in_an_error_are_replaced_so_they_cannot_forge_log_lines()
+    {
+        var attempt = FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, 500, "bad\r\nFAKE LOG LINE\u0007 ");
+
+        attempt.ErrorMessage.ShouldBe("bad  FAKE LOG LINE");
+    }
+
+    [Fact]
+    public void An_error_of_only_control_characters_is_stored_as_unknown()
+    {
+        FetchAttempt.Failed("Rome", TestData.Now, TimeSpan.Zero, 500, "\u0001\u0002 \u0007")
+            .ErrorMessage.ShouldBe("Unknown error");
+    }
+
+    [Fact]
     public void Timestamps_without_a_kind_are_rejected_because_their_time_zone_is_unknown()
     {
         var unspecified = DateTime.SpecifyKind(TestData.Now, DateTimeKind.Unspecified);

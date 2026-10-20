@@ -28,6 +28,17 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
 - No Azure secret exists in GitHub; access can be revoked by deleting the federated credential.
 - Recommended repository settings (not code): protect `main`, require the CI checks, require one review.
 
+## Amendment (2026-10-20, after the security review)
+
+- The deployment is split into a **build job without any credential** (restore, `npm ci`, `dotnet publish`, upload) and a
+  **deploy job with the OIDC token** that runs no build tooling (`azd provision`, `azd deploy --from-package`). A
+  malicious npm lifecycle script or MSBuild target therefore never sees an Azure token or the API key.
+- Deployments run after a green CI run on `main` (`workflow_run`) or manually from `main`, and are skipped until the
+  Azure variables exist. The API key is an environment secret of `production`, visible to the provision step only.
+- All actions are pinned to commit SHAs (Dependabot updates them), checkouts do not persist credentials, high and
+  critical NuGet advisories fail the build, `npm audit` gates production dependencies, Dependabot waits 3 days before
+  adopting a release, and a CI job applies and rolls back all migrations on a real SQL Server.
+
 ## Alternatives considered
 
 - Azure Pipelines: equivalent, but the code already lives on GitHub.

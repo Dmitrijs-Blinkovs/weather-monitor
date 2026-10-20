@@ -19,6 +19,7 @@ The original assignment and how each requirement is met: [README.md](README.md).
 | [docs/getting-started.md](docs/getting-started.md) | you set the environment up from scratch (with or without an AI assistant) |
 | [docs/debugging-in-visual-studio.md](docs/debugging-in-visual-studio.md) | you run and debug manually in Visual Studio 2026 |
 | [docs/deployment.md](docs/deployment.md) | you deploy to Azure or touch `infra/`, `azure.yaml` or the workflows |
+| [docs/security.md](docs/security.md) | you touch the HTTP pipeline, inputs, outbound calls, identities, secrets or pipelines |
 | [.claude/skills/](.claude/skills) | you do a routine task - each skill is a step-by-step runbook any agent can follow |
 
 ## Repository map
@@ -32,33 +33,46 @@ src/
   WeatherMonitor.Domain/          FetchAttempt (aggregate root) owns WeatherSnapshot; CurrentWeather value object.
   WeatherMonitor.Application/     Use cases + ports:
     Abstractions/                   IWeatherProvider, IFetchAttemptRepository, WeatherFetchResult
-    Ingestion/                      WeatherIngestionService (fetch all cities in parallel, store attempts), options
+    Ingestion/                      WeatherIngestionService (fetch all cities in parallel, store attempts), options,
+                                    IngestionMetrics (OpenTelemetry meter "WeatherMonitor.Ingestion")
+    Retention/                      DataRetentionService (batched purge of old history), options
     FetchLog/                       IFetchLogReader + DTOs (paged log, cities)
     History/                        WeatherHistoryService (series + per-city summary), IWeatherHistoryReader, rules
   WeatherMonitor.Infrastructure/  Adapters:
-    Persistence/                    WeatherDbContext, configurations, Migrations/, repository, readers
+    Persistence/                    WeatherDbContext, configurations, Migrations/, repository, readers,
+                                    DatabaseMigrationService (+ read-only grant), DataFreshnessHealthCheck
     OpenWeatherMap/                 OpenWeatherMapClient (typed HttpClient + resilience), options, response DTOs
-  WeatherMonitor.Functions/       Isolated worker. FetchWeatherFunction = thin timer trigger. appsettings.json = cities.
-  WeatherMonitor.Web/             MVC API controllers (Controllers/), request models (Models/), SPA hosting.
+  WeatherMonitor.Functions/       Isolated worker. FetchWeatherFunction (every minute) and PurgeOldDataFunction (daily)
+                                  = thin timer triggers. appsettings.json = cities, retention. host.json = timeout, OTel.
+  WeatherMonitor.Web/             MVC API controllers (Controllers/), request models (Models/), Security/ (headers, rate
+                                  limiting), Caching/ (output cache, compression), health endpoints, SPA hosting.
   weather-monitor.client/         React 19 + TS + Vite. src/features/{chart,fetch-log}, src/api, src/lib, src/test;
                                   e2e/ = Playwright browser tests with a mocked API (e2e/support/mockApi.ts).
+                                  vite.config.ts mirrors the server's security headers for `vite preview`.
 tests/
   WeatherMonitor.<Project>.Tests/ One test project per production project (xUnit v3, Shouldly, NSubstitute).
 infra/                            Bicep: main.bicep (resource group) + resources.bicep (everything else).
 azure.yaml                        Azure Developer CLI services: web -> App Service, functions -> Flex Consumption.
-.github/                          ci.yml (every push), deploy.yml (manual, OIDC), dependabot.yml, PR template.
+.github/                          ci.yml (every push), deploy.yml (after green CI on main, OIDC; credential-free build
+                                  job + deploy job), dependabot.yml, PR template. Actions pinned to commit SHAs.
 ```
 
 ## Architecture in one screen
 
 - **Dependency rule:** Domain <- Application <- Infrastructure <- hosts (Functions, Web). Inner layers never reference
   outer ones. Application defines interfaces (ports); Infrastructure implements them; hosts only compose
-  (`AddWeatherIngestion`, `AddWeatherHistory`, `AddPersistence`, `AddOpenWeatherMap`).
+  (`AddWeatherIngestion`, `AddWeatherHistory`, `AddDataRetention`, `AddPersistence`, `AddPersistenceHealthChecks`,
+  `AddOpenWeatherMap`).
 - **Write path:** timer -> `WeatherIngestionService` -> `IWeatherProvider` (one call per city, in parallel) ->
   `FetchAttempt.Succeeded/Failed` -> `IFetchAttemptRepository.AddRangeAsync` (one transaction for the run).
 - **Read path:** controller -> `IFetchLogReader` / `IWeatherHistoryService` -> EF Core projections (no tracking, no payload).
 - **Expected failures are values, not exceptions:** the provider returns `WeatherFetchResult.Failure(...)`; only bugs throw.
 - **Time is UTC everywhere** (`DateTime` with `Kind=Utc`, `...Utc` suffix); an EF converter restores the kind on read.
+- **Observability:** OpenTelemetry in both hosts (exported only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set),
+  ingestion metrics, `/health/live` (process) vs. `/health` (database + a successful fetch within 10 minutes).
+- **Security:** every input is capped, every response carries strict security headers, `/api/*` is rate-limited and
+  cached, provider responses are size-capped and validated, and each Azure app has its own least-privilege identity
+  ([docs/security.md](docs/security.md)).
 
 ## Commands
 
@@ -69,6 +83,7 @@ dotnet build WeatherMonitor.slnx                                  # warnings are
 dotnet test --solution WeatherMonitor.slnx                        # all .NET tests (Microsoft.Testing.Platform syntax)
 dotnet test --project tests/WeatherMonitor.Web.Tests              # one test project
 cd src/weather-monitor.client && npm ci && npm run lint && npm test && npm run build
+cd src/weather-monitor.client && npm audit --omit=dev --audit-level=high         # as in CI
 cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e   # Playwright (builds + previews itself)
 dotnet test --solution WeatherMonitor.slnx --coverage --coverage-output-format cobertura --report-trx  # as in CI
 az bicep build --file infra/main.bicep --stdout > /dev/null                      # validate the Azure templates
@@ -79,7 +94,9 @@ dotnet ef migrations add <Name> --project src/WeatherMonitor.Infrastructure --st
 
 Local endpoints: Web `https://localhost:7180` / `http://localhost:5180`, Vite `http://localhost:5173`, Functions host
 `http://localhost:7071`, Azurite `10000-10002`, database `(localdb)\MSSQLLocalDB` / `WeatherMonitor`.
-Trigger the timer immediately: `POST http://localhost:7071/admin/functions/FetchWeather` with body `{"input":""}`.
+Health: `http://localhost:5180/health/live` (process) and `/health` (`Degraded` until the first successful fetch).
+Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWeather` (or `PurgeOldData`) with body
+`{"input":""}`.
 
 ## Conventions
 
@@ -89,6 +106,7 @@ Trigger the timer immediately: `POST http://localhost:7071/admin/functions/Fetch
 - Logging through `[LoggerMessage]` source-generated methods, never string interpolation in log calls.
 - Options classes bind a named section, validate with DataAnnotations/`IValidatableObject` and `ValidateOnStart()`.
 - New package: add `<PackageVersion>` to `Directory.Packages.props`, then a version-less `<PackageReference>`.
+  High/critical NuGet advisories (also transitive) fail the build; pin a fixed transitive version there if needed.
 - Never put secrets in files under source control. The OpenWeatherMap key lives in user secrets locally.
 
 **Tests**
@@ -107,11 +125,13 @@ Trigger the timer immediately: `POST http://localhost:7071/admin/functions/Fetch
 ## Definition of done
 
 1. `dotnet build WeatherMonitor.slnx` - 0 warnings, 0 errors.
-2. `dotnet test --solution WeatherMonitor.slnx` and `npm run lint && npm test && npm run test:e2e && npm run build` in the
-   client - green (CI runs exactly these, plus the Bicep build).
+2. `dotnet test --solution WeatherMonitor.slnx` and `npm audit --omit=dev --audit-level=high && npm run lint && npm test
+   && npm run test:e2e && npm run build` in the client - green (CI runs exactly these, plus the Bicep build and a
+   migrations up/down job on SQL Server).
 3. New behaviour has tests at the lowest layer that can prove it; bugs get a test that fails without the fix.
 4. A data model change has a migration; an API change is reflected in `src/api/types.ts` and the README API table.
-5. A changed design decision has a new or superseding ADR in `docs/adr/`.
+5. A changed design decision has a new or superseding ADR in `docs/adr/`; a changed security control is reflected in
+   `docs/security.md`.
 6. User-visible change: run the app (`.claude/skills/run-locally`) and look at it.
 
 ## Known pitfalls
@@ -136,6 +156,20 @@ Trigger the timer immediately: `POST http://localhost:7071/admin/functions/Fetch
 - In development the UI is served by Vite on 5173; deep links typed directly on 5180 return 404 (only `/` redirects).
 - Core Tools warns against `func start` for isolated projects; use `dotnet run` (works from any folder).
 - A brand-new OpenWeatherMap key returns 401 for up to ~2 hours.
+- Output caching: two identical API requests within the cache window return the same body. Web tests that change the
+  substituted data between requests must vary the query (or the test fails for a "wrong" reason).
+- Output-cache locking (request coalescing) is off on purpose: with it, a request that waits for an identical one
+  inherits that request's cancellation and returns 500 when the browser aborts the first (React StrictMode always does).
+- The CSP is defined twice: `Web/Security/SecurityHeaders.cs` (production) and `vite.config.ts` (`vite preview` for
+  Playwright). Change both; inline `<script>`/`style=""` attributes violate it (React `style` props are fine).
+- `FetchLogRequest.MaxPage` (API) and `MAX_LOG_PAGE` (client `Pagination.tsx`) must stay equal.
+- `/health` is rate-limited and depends on data freshness; probes that only need "process alive" use `/health/live`.
+- Two managed identities in Azure: the web app can only read the database (`db_datareader`, granted by the function
+  after migrating). Anything the web app must write needs a deliberate change (ADR 0015).
+- OpenTelemetry in the Functions worker is wired up only with an Application Insights connection string: with
+  `UseFunctionsWorkerDefaults()` the host stops forwarding worker logs, so locally the console would go silent.
+- `workflow_run` branch filters match only the branch name; the deploy workflow also checks that the CI run was a
+  push to this repository. Keep that check.
 
 ## Where to start for common tasks
 
@@ -148,3 +182,4 @@ Trigger the timer immediately: `POST http://localhost:7071/admin/functions/Fetch
 | New endpoint or field in the UI | `Web/Controllers`, `Application/<feature>`, `client/src/api` | `add-api-endpoint` |
 | Fetches failing / no data | Fetch log page, `FetchAttempts` table | `troubleshoot-ingestion` |
 | Deploy to Azure / change infrastructure | `docs/deployment.md`, `infra/`, `.github/workflows/deploy.yml` | `deploy-to-azure` |
+| Security review / new input or header | `docs/security.md`, `Web/Security`, `OpenWeatherMapClient` | `verify-changes` |

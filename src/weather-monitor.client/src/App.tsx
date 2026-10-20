@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router';
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Pages are split into their own chunks; the charting library only loads with the chart page.
 const ChartPage = lazy(() => import('./features/chart/ChartPage').then((module) => ({ default: module.ChartPage })));
@@ -29,6 +30,8 @@ export function App() {
 }
 
 export function AppShell() {
+  const location = useLocation();
+
   return (
     <div className="app">
       <header className="app-header">
@@ -49,14 +52,17 @@ export function AppShell() {
       </header>
 
       <main className="app-main">
-        <Suspense fallback={<p className="muted">Loading…</p>}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/temperature" replace />} />
-            <Route path="/temperature" element={<ChartPage />} />
-            <Route path="/fetch-log" element={<FetchLogPage />} />
-            <Route path="*" element={<Navigate to="/temperature" replace />} />
-          </Routes>
-        </Suspense>
+        {/* Keyed by path, so navigating to another page recovers from an error on the previous one. */}
+        <ErrorBoundary key={location.pathname}>
+          <Suspense fallback={<p className="muted">Loading…</p>}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/temperature" replace />} />
+              <Route path="/temperature" element={<ChartPage />} />
+              <Route path="/fetch-log" element={<FetchLogPage />} />
+              <Route path="*" element={<Navigate to="/temperature" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   );

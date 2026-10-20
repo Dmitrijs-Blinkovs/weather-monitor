@@ -63,6 +63,9 @@ Stop everything with **Shift+F5**.
 | `src/WeatherMonitor.Web/Controllers/WeatherController.cs` - `GetHistoryAsync` | bound and validated `from`/`to` |
 | `src/WeatherMonitor.Application/History/WeatherHistoryService.cs` - `BuildSeries` | grouping and summary per city |
 | `src/WeatherMonitor.Infrastructure/Persistence/WeatherHistoryReader.cs` | the `DISTINCT` query result |
+| `src/WeatherMonitor.Application/Retention/DataRetentionService.cs` - `PurgeAsync` | the cutoff and each deleted batch (trigger `PurgeOldData`, section 5) |
+| `src/WeatherMonitor.Infrastructure/Persistence/DataFreshnessHealthCheck.cs` - `CheckHealthAsync` | why `/health` reports `Degraded` |
+| `src/WeatherMonitor.Infrastructure/Persistence/DatabaseMigrationService.cs` - `StartingAsync` | migrations on start (and the read-only grant in Azure) |
 
 Tip: to inspect the SQL that EF Core sends, set `"Microsoft.EntityFrameworkCore.Database.Command": "Information"` in
 `src/WeatherMonitor.Web/appsettings.json` or `src/WeatherMonitor.Functions/appsettings.json`.
@@ -71,8 +74,9 @@ Tip: to inspect the SQL that EF Core sends, set `"Microsoft.EntityFrameworkCore.
 
 Open `src/WeatherMonitor.Functions/WeatherMonitor.Functions.http` and click **Send request** above
 `POST .../admin/functions/FetchWeather` (Visual Studio's built-in HTTP client). Breakpoints in the ingestion path are
-hit immediately. `src/WeatherMonitor.Web/WeatherMonitor.Web.http` has ready-made requests for every API endpoint,
-including invalid ones that return `400`.
+hit immediately. The same file runs `PurgeOldData` (deletes history older than `Retention:Days`, 90 by default).
+`src/WeatherMonitor.Web/WeatherMonitor.Web.http` has ready-made requests for every API endpoint, both health endpoints,
+and invalid requests that return `400`.
 
 ## 6. Look at the data
 
@@ -114,4 +118,6 @@ FROM WeatherSnapshots ORDER BY Id DESC;
 | Browser stays on "Launching the SPA proxy..." | First `npm install` still running or Node.js missing; check the Web console window. If the log says `Unable to connect to the SPA development server`, stop debugging, run `npm run dev` in `src/weather-monitor.client` from **View > Terminal**, then press F5 again - the proxy reuses the running Vite. |
 | Port already in use | A previous run is still alive: Shift+F5, or close stray `func`, `dotnet` and `node` processes. |
 | Timer never fires, storage connection errors in the Functions console | Azurite is not running. Restart debugging, or start it manually from the repository root: `npx azurite --silent --location .azurite`. |
-| Warning `NU190x` | A package with a known vulnerability was reported; pin a fixed version in `Directory.Packages.props`. |
+| Error `NU1903`/`NU1904` (warning `NU1901`/`NU1902`) | A package with a known vulnerability; high and critical ones fail the build. Update it or pin a fixed transitive version in `Directory.Packages.props`. |
+| `/health` says `Degraded` | No successful fetch in the last 10 minutes: the Functions host is not running, or every fetch fails (see the Fetch log page and `.claude/skills/troubleshoot-ingestion`). |
+| `429 Too Many Requests` from the API | More than `RateLimiting:PermitsPerMinute` (120) requests a minute from one client, e.g. a script in a loop. Wait for `Retry-After` or raise the limit in `appsettings.Development.json`. |

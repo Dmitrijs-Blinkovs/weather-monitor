@@ -23,6 +23,39 @@ public sealed class FetchWeatherFunctionTests
     }
 
     [Fact]
+    public void Old_data_is_purged_once_a_day_at_half_past_three_utc()
+    {
+        var method = typeof(PurgeOldDataFunction).GetMethod(nameof(PurgeOldDataFunction.RunAsync))!;
+
+        method.GetCustomAttribute<FunctionAttribute>().ShouldNotBeNull().Name.ShouldBe("PurgeOldData");
+        var trigger = method.GetParameters()[0].GetCustomAttribute<TimerTriggerAttribute>().ShouldNotBeNull();
+        trigger.Schedule.ShouldBe("0 30 3 * * *");
+        trigger.RunOnStartup.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task The_purge_delegates_to_the_retention_service()
+    {
+        var retention = Substitute.For<WeatherMonitor.Application.Retention.IDataRetentionService>();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await new PurgeOldDataFunction(retention).RunAsync(new TimerInfo(), cancellationToken);
+
+        await retention.Received(1).PurgeAsync(cancellationToken);
+    }
+
+    [Fact]
+    public void The_shipped_configuration_keeps_90_days_of_history()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false)
+            .Build();
+
+        configuration.GetValue<int>("Retention:Days").ShouldBe(90);
+    }
+
+    [Fact]
     public void The_shipped_configuration_fetches_London_Rome_and_Riga_with_their_country_codes()
     {
         var configuration = new ConfigurationBuilder()

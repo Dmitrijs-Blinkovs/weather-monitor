@@ -67,10 +67,33 @@ public sealed class FetchAttempt
 
         return new FetchAttempt(city, attemptedAtUtc, duration, isSuccess: false, httpStatusCode)
         {
-            ErrorMessage = errorMessage.Length <= ErrorMessageMaxLength
-                ? errorMessage
-                : errorMessage[..ErrorMessageMaxLength],
+            ErrorMessage = SanitizeErrorMessage(errorMessage),
         };
+    }
+
+    /// <summary>
+    /// Error texts come from third parties and are shown publicly: control characters (line breaks could forge lines
+    /// in plain-text logs) become spaces, and the text is cut to the column length.
+    /// </summary>
+    internal static string SanitizeErrorMessage(string errorMessage)
+    {
+        var cleaned = string.Create(
+            errorMessage.Length,
+            errorMessage,
+            static (target, source) =>
+            {
+                for (var i = 0; i < source.Length; i++)
+                {
+                    target[i] = char.IsControl(source[i]) ? ' ' : source[i];
+                }
+            }).Trim();
+
+        if (cleaned.Length == 0)
+        {
+            return "Unknown error";
+        }
+
+        return cleaned.Length <= ErrorMessageMaxLength ? cleaned : cleaned[..ErrorMessageMaxLength];
     }
 
     internal static DateTime EnsureUtc(DateTime value) => value.Kind switch

@@ -7,6 +7,11 @@ description: Diagnose why Weather Monitor is not storing weather data - failed a
 
 Work from evidence: the fetch log (UI or `FetchAttempts` table) and the Functions host output. Never print the API key.
 
+Signals that something is wrong (ADR 0016): `/health` reports `Degraded` (no successful fetch for 10 minutes); in Azure
+the alert `alert-no-weather-data-*` fires after 15 minutes, and the `weather.fetch.attempts` metric split by `outcome`
+and `city` shows which cities fail. A run in which every city fails is still a "successful" function invocation - look
+at the attempts, not at the invocation status.
+
 ## 1. Is the host running and the timer firing?
 
 | Host output | Meaning / action |
@@ -33,6 +38,10 @@ FROM FetchAttempts WHERE IsSuccess = 0 ORDER BY Id DESC;
 | 429 | rate limit (60/min on free plan) shared with another app | reduce load, wait |
 | 5xx, `Request timed out`, circuit open | provider trouble; resilience already retried | transient - confirm the next minutes recover |
 | 200 + `missing one of the required fields` / `not valid JSON` | provider response changed | inspect a raw payload, update `OpenWeatherMapResponse` / `TryParse` and its tests |
+| 200 + `Unexpected content type` | an HTML error page from a proxy or captive portal, or a wrong `BaseUrl` | check `OpenWeatherMap:BaseUrl` and the network path |
+| 200 + `Implausible temperatures in response` | units changed (Kelvin/Fahrenheit) or corrupted data | check `units=metric` in the request and a raw response |
+| null + `Request failed: Cannot write more bytes to the buffer than the configured maximum buffer size` | response above 64 KB - not a weather response | check `BaseUrl`; the cap is `MaxWeatherResponseBytes` |
+| null + `The circuit is now open` | at least half of the last calls failed; calls are skipped for 45 s | look at the earlier failures - they hold the cause |
 | null + `Request failed: ...` | DNS/proxy/firewall | check network from the host |
 
 ## 3. Data looks wrong
@@ -43,6 +52,8 @@ FROM FetchAttempts WHERE IsSuccess = 0 ORDER BY Id DESC;
 - Inspect a payload: `SELECT TOP 1 RawPayload FROM WeatherSnapshots WHERE City = 'Rome' ORDER BY Id DESC`
   (`JSON_VALUE(RawPayload, '$.coord.lat')` etc.).
 - Chart "not updating": expected between provider updates (~10 min); compare `ObservedAtUtc` with `FetchedAtUtc`.
+- Old rows gone: the daily `PurgeOldData` function deletes history older than `Retention:Days` (90) - by design
+  (ADR 0014).
 
 ## 4. Fix and prove
 

@@ -18,7 +18,7 @@ Keep writing every fetch (requirement). The history reader selects `DISTINCT` ov
 
 - Each point on the chart is a real observation; the x position is the provider's update time shown in the UI.
 - 7 days are about 1,000 points per city instead of 10,000; a 31-day cap bounds the response.
-- Storage grows by ~4,300 rows/day; retention/cleanup is a future concern, not handled yet.
+- Storage grows by ~4,300 attempts plus ~4,300 snapshots a day; a daily purge keeps 90 days (ADR 0014).
 
 ## Alternatives considered
 

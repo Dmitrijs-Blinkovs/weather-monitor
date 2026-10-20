@@ -17,6 +17,10 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
 {
     private const string Redacted = "***";
 
+    // Plausibility bounds for air temperature in degrees Celsius (records are about -90 and +57).
+    private const double MinPlausibleCelsius = -100;
+    private const double MaxPlausibleCelsius = 70;
+
     public async Task<WeatherFetchResult> GetCurrentWeatherAsync(
         string city,
         string? countryCode,
@@ -41,6 +45,12 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             {
                 var message = FirstNonBlank(ReadErrorMessage(body), response.ReasonPhrase) ?? $"HTTP {statusCode}";
                 return WeatherFetchResult.Failure(statusCode, Redact(message, apiKey));
+            }
+
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (!string.Equals(mediaType, "application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                return WeatherFetchResult.Failure(statusCode, $"Unexpected content type '{mediaType ?? "none"}'");
             }
 
             return TryParse(body, out var weather, out var parseError)
@@ -92,6 +102,14 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             return false;
         }
 
+        if (!IsPlausible(temp) || !IsPlausible(tempMin) || !IsPlausible(tempMax) || tempMin > tempMax)
+        {
+            error = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Implausible temperatures in response: temp {temp}, temp_min {tempMin}, temp_max {tempMax}");
+            return false;
+        }
+
         weather = new CurrentWeather(
             country,
             temp,
@@ -114,6 +132,9 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
             return null;
         }
     }
+
+    private static bool IsPlausible(double celsius) =>
+        double.IsFinite(celsius) && celsius is >= MinPlausibleCelsius and <= MaxPlausibleCelsius;
 
     private static string? FirstNonBlank(params string?[] candidates) =>
         candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));

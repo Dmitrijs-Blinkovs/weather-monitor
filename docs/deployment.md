@@ -10,25 +10,35 @@ One resource group `rg-<environment>` with:
 
 | Resource | SKU | Purpose | Approx. cost / month |
 |---|---|---|---|
-| User-assigned managed identity | - | the only identity the apps use (SQL, Key Vault, Storage) | free |
-| Function app (Linux) | Flex Consumption FC1, 512 MB | `FetchWeather` timer, every minute | ~0 (inside the monthly free grant) |
+| Managed identity `id-func-*` | - | the function: SQL administrator (migrations), Key Vault secret reader, Storage | free |
+| Managed identity `id-web-*` | - | the web app: `db_datareader` on the database, nothing else | free |
+| Function app (Linux) | Flex Consumption FC1, 512 MB | `FetchWeather` every minute, `PurgeOldData` daily at 03:30 UTC | ~0 (inside the monthly free grant) |
 | Storage account | Standard LRS, shared keys disabled | timer leases, Flex deployment packages | cents |
-| App Service plan + web app (Linux) | B1 (default) or F1 | MVC API + React UI, health check `/health` | ~13 USD (B1) / 0 (F1) |
+| App Service plan + web app (Linux) | B1 (default) or F1 | MVC API + React UI, health probe `/health/live` | ~13 USD (B1) / 0 (F1) |
 | Azure SQL server + database `weatherdb` | Basic (5 DTU, 2 GB) | fetch log and snapshots | ~5 USD |
 | Key Vault | Standard, RBAC | the OpenWeatherMap API key | cents |
-| Log Analytics + Application Insights | pay-as-you-go | logs, requests, function invocations | free up to 5 GB/month |
+| Log Analytics + Application Insights | pay-as-you-go | traces, metrics, logs, Key Vault and SQL audit logs | free up to 5 GB/month |
+| Scheduled query alert (+ action group if `ALERT_EMAIL` is set) | - | fires when no fetch succeeded for 15 minutes | ~0.10 USD |
 
 Why Basic SQL and not serverless: a database written every minute never auto-pauses, so the serverless free offer
 (100,000 vCore-seconds) would be used up within days.
 
+Volume: three cities every minute are ~4,300 attempts plus ~4,300 snapshots per day (~8,600 rows). The daily purge
+keeps 90 days ([ADR 0014](adr/0014-data-retention.md)), i.e. well under 1 GB of the 2 GB Basic limit.
+
 ## Security model
 
-- No passwords anywhere: the apps authenticate to SQL (Entra-only authentication), Key Vault and Storage with one
-  user-assigned managed identity. Storage shared keys are disabled; SQL accepts only Entra ID.
-- The API key is a Key Vault secret; the function's app setting is a Key Vault reference.
-- HTTPS only, TLS 1.2 minimum, FTP disabled, SQL reachable only from Azure services.
-- Trade-off: the apps' identity is the SQL server's Entra administrator so it can apply EF Core migrations on start.
-  See [ADR 0011](adr/0011-azure-hosting-and-identity.md) for the stricter alternative.
+Details and the OWASP mapping: [security.md](security.md).
+
+- **No passwords anywhere.** Each app has its own user-assigned managed identity
+  ([ADR 0015](adr/0015-least-privilege-identities.md)). SQL accepts only Entra ID; Storage shared keys are disabled.
+- **Least privilege.** The function identity is the SQL Entra administrator (it applies the migrations on start) and,
+  after migrating, grants the web identity `db_datareader` (`Database__ReadOnlyIdentity__*` app settings). The web app
+  can read, not write; it cannot read the Key Vault or the storage account.
+- **The API key** is a Key Vault secret; the function's app setting is a Key Vault reference.
+- **Network.** HTTPS only (TLS 1.3 on the web app, 1.2 elsewhere), FTP and basic-auth publishing disabled, the function
+  app denies all inbound traffic (it only has timers), SQL is reachable from Azure services only.
+- **Audit.** Key Vault and SQL audit logs go to Log Analytics.
 
 ## Prerequisites
 
@@ -62,7 +72,13 @@ azd env set AZURE_LOCATION northeurope
 azd env set OPENWEATHERMAP_API_KEY <your-api-key>
 ```
 
-Optional, free web tier (slower first request, no health check):
+Optional: e-mail for the "no weather data" alert.
+
+```bash
+azd env set ALERT_EMAIL <address>
+```
+
+Optional, free web tier (slower first request, no health probe):
 
 ```bash
 azd env set WEB_SKU_NAME F1
@@ -76,39 +92,74 @@ azd up
 The azd environment (including the key) is stored under `.azure/`, which is ignored by Git.
 
 Verify:
-1. `<WEB_URL>/health` returns `Healthy`.
-2. Within a minute the Fetch log shows three successful attempts.
-3. Application Insights > Transaction search shows `FetchWeather` invocations every minute.
+1. `<WEB_URL>/health/live` returns `Healthy` (the process runs).
+2. `<WEB_URL>/health` returns `Healthy` within a few minutes: the database is reachable and a fetch succeeded in the
+   last 10 minutes. `Degraded` means no recent successful fetch - see `.claude/skills/troubleshoot-ingestion`.
+3. The Fetch log shows three successful attempts per minute.
+4. Application Insights > Metrics (custom namespace) shows `weather.fetch.attempts` split by `outcome`.
 
 ## Continuous deployment from GitHub
 
-1. Connect the repository to Azure once (creates an app registration with a federated credential for GitHub OIDC,
-   assigns it roles and sets the repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
-   `AZURE_ENV_NAME`, `AZURE_LOCATION`):
+The workflow runs automatically after every green CI run on `main` (and can be started manually from `main`). It is
+skipped until the repository variables below exist.
+
+1. Connect the repository to Azure once. `azd pipeline config` creates an app registration (or managed identity) with
+   federated credentials, assigns it roles and sets the repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID`, `AZURE_ENV_NAME`, `AZURE_LOCATION`:
    ```bash
    azd pipeline config
    ```
-2. Add the repository secret `OPENWEATHERMAP_API_KEY` (Settings > Secrets and variables > Actions).
-   Optionally add the variable `WEB_SKU_NAME`.
-3. Settings > Environments > `production`: add required reviewers so every deployment needs an approval.
-4. Actions > **Deploy to Azure** > Run workflow. The workflow provisions, deploys and smoke-tests `/health`.
-5. To deploy automatically after every merge, add `push: branches: [main]` to the workflow's `on:` block - ideally
-   gated on a green CI run.
+2. **Tighten the federated credentials.** The deploy job runs in the `production` environment, so its OIDC subject is
+   `repo:<owner>/<repo>:environment:production`. Keep exactly one federated credential with that subject on the app
+   registration (Entra ID > App registrations > Certificates & secrets > Federated credentials) and delete the
+   branch and `pull_request` credentials azd creates: a pull request must never be able to obtain an Azure token.
+   Where possible, scope the principal's role assignments to the resource group instead of the subscription.
+3. Settings > Environments > `production`:
+   - add **required reviewers** and allow deployments from the `main` branch only;
+   - add the **environment secret** `OPENWEATHERMAP_API_KEY` (not a repository secret: only the approved deploy job
+     can read it). If `azd pipeline config` created a repository secret of the same name, delete it.
+4. Optional repository variables: `WEB_SKU_NAME` (`B1` default, or `F1`), `ALERT_EMAIL`.
+5. Merge to `main`. The workflow builds the packages in a job without any credential, waits for the approval, then
+   provisions, deploys the tested packages and smoke-tests `/health` (must report `Healthy` within 5 minutes).
 
 ## Operations
 
-- **Logs:** Application Insights (Function invocations, web requests, exceptions) and the log stream of each app.
+- **Telemetry:** Application Insights - traces of every run (OpenWeatherMap and SQL calls), web requests, the
+  `weather.fetch.attempts` / `weather.fetch.duration` metrics per city and outcome, exceptions, logs.
+- **Alert:** `alert-no-weather-data-*` fires when no successful fetch was recorded for 15 minutes (revoked key, quota,
+  provider outage, broken deployment). Without `ALERT_EMAIL` it is visible in the portal only.
+- **Health:** `/health/live` (App Service probe; process only) and `/health` (database + data freshness; for humans,
+  monitors and the smoke test).
 - **Data:** the Fetch log page; or Query editor on the database (sign in with an Entra account you add as admin, or
   temporarily switch the administrator).
-- **Change cities:** set app settings `Weather__Cities__0__Name`, `Weather__Cities__0__CountryCode`, ... on the
-  function app, or change `appsettings.json` and redeploy (`.claude/skills/manage-cities`).
+- **Retention:** `Retention__Days` on the function app (default 90, `0` disables the purge).
+- **Trigger a function manually:** the function app denies inbound traffic, so the portal's "Test/Run" and the admin
+  API are closed. Add a temporary access restriction for your IP if you really need it, and remove it afterwards.
+- **Change cities:** change `src/WeatherMonitor.Functions/appsettings.json` and redeploy
+  (`.claude/skills/manage-cities`). App settings (`Weather__Cities__0__Name`, ...) override entries by index and can
+  add cities, but cannot remove one from the shipped list.
+- **Rotate the API key:** set the new value as the environment secret (or `azd env set OPENWEATHERMAP_API_KEY`) and run
+  the deployment; the versionless Key Vault reference picks up the new version within 24 hours, or at once after a
+  restart of the function app.
 - **Tear down everything (deletes all data and purges the Key Vault):**
   ```bash
   azd down --purge
   ```
 
+## Hardening options
+
+Accepted for this size, recommended for a long-lived production environment (see [security.md](security.md)):
+
+| Option | Effect | Cost |
+|---|---|---|
+| Private endpoints for SQL, Key Vault and Storage + VNet integration of both apps, `publicNetworkAccess: Disabled` | removes the "any Azure network" SQL firewall rule | ~10-20 USD/month |
+| Key Vault purge protection | a deleted vault/secret cannot be purged for 90 days (blocks `azd down --purge` + re-create) | free |
+| An Entra group as SQL administrator, migration bundles in the pipeline | the function no longer needs admin rights at run time | free |
+| `DisableLocalAuth` on Application Insights + Monitoring Metrics Publisher role | telemetry accepted only with Entra tokens | free |
+| Microsoft Defender for SQL / App Service | threat detection, vulnerability assessment | paid |
+
 ## Known limits
 
-- No data retention yet: the database grows by ~4,300 rows per day (Basic allows 2 GB).
-- F1 web tier unloads after 20 idle minutes; the first request afterwards is slow.
+- F1 web tier unloads after 20 idle minutes; the first request afterwards is slow, and there is no health probe.
 - Migrations run on start (EF Core takes a lock); for larger teams prefer migration bundles in the pipeline.
+- One environment (`production`); a staging slot or a second azd environment would allow testing before production.

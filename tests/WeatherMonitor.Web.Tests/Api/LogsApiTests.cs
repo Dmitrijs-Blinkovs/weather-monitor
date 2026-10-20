@@ -62,6 +62,7 @@ public sealed class LogsApiTests : IAsyncDisposable
     [InlineData("pageSize=0")]
     [InlineData("page=0")]
     [InlineData("page=2147483647")]
+    [InlineData("page=1001")]
     [InlineData("status=Maybe")]
     public async Task Rejects_invalid_queries_with_a_validation_problem(string query)
     {

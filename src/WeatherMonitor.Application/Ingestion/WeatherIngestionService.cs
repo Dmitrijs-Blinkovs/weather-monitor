@@ -10,6 +10,7 @@ internal sealed partial class WeatherIngestionService(
     IFetchAttemptRepository repository,
     IOptions<WeatherIngestionOptions> options,
     TimeProvider timeProvider,
+    IngestionMetrics metrics,
     ILogger<WeatherIngestionService> logger) : IWeatherIngestionService
 {
     internal const string CancelledMessage =
@@ -23,6 +24,11 @@ internal sealed partial class WeatherIngestionService(
         // Cities are fetched independently and in parallel: one failing city never blocks the others.
         var attempts = await Task.WhenAll(
             options.Value.Cities.Select(city => FetchAsync(city.Name, city.CountryCode, cancellationToken)));
+
+        foreach (var attempt in attempts)
+        {
+            metrics.Record(attempt);
+        }
 
         var summary = new IngestionSummary(
             Succeeded: attempts.Count(attempt => attempt.IsSuccess),

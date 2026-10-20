@@ -9,5 +9,11 @@ Content-Type: application/json
 
 { "input": "" }
 
+### Run the daily retention purge now (deletes history older than Retention:Days, 90 by default)
+POST {{FunctionsHost}}/admin/functions/PurgeOldData
+Content-Type: application/json
+
+{ "input": "" }
+
 ### Host status
 GET {{FunctionsHost}}/admin/host/status

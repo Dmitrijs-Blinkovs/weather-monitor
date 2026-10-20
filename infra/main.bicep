@@ -19,6 +19,9 @@ param openWeatherMapApiKey string
 @description('App Service plan of the web app. F1 is free but unloads when idle and has no health check; B1 is the recommended minimum.')
 param webSkuName string = 'B1'
 
+@description('Optional e-mail address for the "no weather data for 15 minutes" alert.')
+param alertEmail string = ''
+
 var tags = {
   'azd-env-name': environmentName
   application: 'weather-monitor'
@@ -39,6 +42,7 @@ module resources 'resources.bicep' = {
     resourceToken: toLower(uniqueString(subscription().id, environmentName, location))
     openWeatherMapApiKey: openWeatherMapApiKey
     webSkuName: webSkuName
+    alertEmail: alertEmail
   }
 }
 

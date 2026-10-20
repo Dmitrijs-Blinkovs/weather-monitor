@@ -110,8 +110,9 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https
 
 | Check | Expected |
 |---|---|
-| Functions terminal | `Functions: FetchWeather: timerTrigger`, then every minute `Weather ingestion completed: 3 succeeded, 0 failed` |
-| <http://localhost:5180/health> | `Healthy` |
+| Functions terminal | `FetchWeather: timerTrigger` and `PurgeOldData: timerTrigger`, then every minute `Weather ingestion completed: 3 succeeded, 0 failed` |
+| <http://localhost:5180/health/live> | `Healthy` (the web process runs) |
+| <http://localhost:5180/health> | `Healthy` once a fetch has succeeded; `Degraded` before the first fetch or when none succeeded for 10 minutes |
 | UI > **Fetch log** | three rows per minute, `Success`, HTTP 200 |
 | UI > **Temperature** | a card per city (London GB, Riga LV, Rome IT) and lines on the chart |
 

@@ -1,6 +1,6 @@
 # 0011. Azure hosting: Flex Consumption, App Service, Azure SQL and one managed identity
 
-- Status: Accepted (not deployed yet)
+- Status: Accepted (not deployed yet); the shared-identity part is superseded by ADR 0015
 - Date: 2026-10-19
 
 ## Context

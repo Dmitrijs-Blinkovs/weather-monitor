@@ -4,7 +4,11 @@ import type { WeatherHistory } from '../../api/types';
 import { formatAxisTick } from '../../lib/format';
 import { colorForCity } from '../../lib/seriesColors';
 import { lastRowIndexFor, rangeColumn, temperatureColumn, timeTicks, toChartRows } from './chartData';
+import { downsample } from './downsample';
 import { WeatherTooltip } from './WeatherTooltip';
+
+/** About one point per two pixels of a wide chart; long ranges are thinned to this, the tooltip still uses all data. */
+const MAX_POINTS_PER_CITY = 600;
 
 interface TemperatureChartProps {
   history: WeatherHistory;
@@ -16,7 +20,13 @@ interface TemperatureChartProps {
 const axisTick = { fill: 'var(--text-muted)', fontSize: 12 };
 
 export function TemperatureChart({ history, allCities, showMinMax }: TemperatureChartProps) {
-  const rows = useMemo(() => toChartRows(history.cities), [history.cities]);
+  const rows = useMemo(
+    () =>
+      toChartRows(
+        history.cities.map((city) => ({ ...city, points: downsample(city.points, MAX_POINTS_PER_CITY) })),
+      ),
+    [history.cities],
+  );
   const colors = history.cities.map((city) => colorForCity(city.city, allCities));
   const from = Date.parse(history.fromUtc);
   const to = Date.parse(history.toUtc);

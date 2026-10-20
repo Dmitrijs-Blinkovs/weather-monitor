@@ -22,7 +22,8 @@ dotnet test --solution WeatherMonitor.slnx --configuration Release --no-build --
 - Expect `0 Warning(s)` and `0 Error(s)`: `TreatWarningsAsErrors` is on, so analyzer and style findings fail the build.
   Fix the code; do not suppress warnings or edit `Directory.Build.props` to get green.
 - `xUnit1051` -> pass `TestContext.Current.CancellationToken`.
-- `NU190x` (vulnerable package) -> pin a fixed version in `Directory.Packages.props` ("Transitive security pins").
+- `NU1903`/`NU1904` errors (high/critical vulnerable package, also transitive) -> update it or pin a fixed version in
+  `Directory.Packages.props` ("Transitive security pins"). `NU1901`/`NU1902` stay warnings.
 - "Testing with VSTest target is no longer supported" -> use `--solution`/`--project` (Microsoft.Testing.Platform).
 - `The_migrations_are_in_sync_with_the_model` failing -> add a migration (`add-ef-migration` skill).
 - `MSB3030 ... WorkerExtensions ... not found` on a fresh clone -> the path is too long; clone to a short path.
@@ -32,6 +33,7 @@ dotnet test --solution WeatherMonitor.slnx --configuration Release --no-build --
 ```bash
 cd src/weather-monitor.client
 npm ci                     # only when package-lock.json changed or node_modules is missing
+npm audit --omit=dev --audit-level=high   # production dependencies, as in CI
 npm run lint
 npm run test:coverage      # Vitest unit/component tests
 npm run build              # tsc -b (app, tests, e2e) + Vite production build
@@ -40,7 +42,9 @@ npm run test:e2e           # Playwright against the production build with a mock
 ```
 
 Expect no lint output, all tests passing, no "chunks are larger than 500 kB" warning (pages are lazy-loaded). Playwright
-failures leave a report: `npx playwright show-report`. An axe violation is a real accessibility bug - fix the UI.
+failures leave a report: `npx playwright show-report`. An axe violation is a real accessibility bug - fix the UI. A CSP
+violation means new inline script/style or a new origin: fix the code, or change the policy in both
+`Web/Security/SecurityHeaders.cs` and `vite.config.ts` and record why in `docs/security.md`.
 
 ## 4. Infrastructure (when `infra/` changed)
 
@@ -50,11 +54,22 @@ az bicep build --file infra/main.bicep --stdout > /dev/null
 
 Must compile without warnings. This only compiles locally; it never touches a subscription.
 
+Migrations: CI also applies all migrations to SQL Server 2022, rolls back to `0` and applies them again. Locally the same
+check needs a throwaway database on LocalDB (never the `WeatherMonitor` database with the user's data):
+
+```bash
+dotnet ef database update --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --connection "Server=(localdb)\MSSQLLocalDB;Database=WeatherMonitor_Verify;Trusted_Connection=True;TrustServerCertificate=True"
+```
+
+Then `database update 0` and again the latest, and drop `WeatherMonitor_Verify` afterwards.
+
 ## 5. Behaviour
 
 - Each new behaviour has a test at the lowest layer that proves it; a bug fix has a test that fails without the fix.
 - Model change -> a migration exists. API change -> `src/api/types.ts`, `e2e/support/mockApi.ts` and the README API
   table are updated.
+- Security-relevant change (new input, header, outbound call, identity, secret, workflow) -> `docs/security.md` is
+  still true.
 - User-visible change -> run the app (`run-locally` skill) and look at it; tests alone do not prove UI work.
 
 ## 6. Report

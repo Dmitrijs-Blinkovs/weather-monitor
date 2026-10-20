@@ -23,6 +23,28 @@ test('a deep link opens the page directly', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1, name: 'Fetch log' })).toBeVisible();
 });
 
+test('both pages work under the strict content security policy', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
+      violations.push(message.text());
+    }
+  });
+  await mockApi(page);
+
+  const response = await page.goto('/temperature');
+  expect(response?.headers()['content-security-policy']).toContain("script-src 'self'");
+  await expect(page.locator('.recharts-line')).toHaveCount(3);
+  const plot = (await page.locator('.recharts-wrapper').boundingBox())!;
+  await page.mouse.move(plot.x + plot.width * 0.9, plot.y + plot.height / 2);
+  await expect(page.locator('.chart-tooltip')).toBeVisible();
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Fetch log' }).click();
+  await expect(page.getByRole('table')).toBeVisible();
+
+  expect(violations).toEqual([]);
+});
+
 test('the page is in English even in a Latvian browser', async ({ page }) => {
   await mockApi(page);
   await page.goto('/temperature');

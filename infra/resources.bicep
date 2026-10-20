@@ -1,6 +1,7 @@
-// All Weather Monitor resources in one resource group. Design notes: docs/deployment.md and docs/adr/0011.
-// - No secrets or connection strings with passwords: everything authenticates with one user-assigned managed identity.
-// - The OpenWeatherMap key lives in Key Vault; app settings hold only a Key Vault reference.
+// All Weather Monitor resources in one resource group. Design notes: docs/deployment.md, docs/security.md and
+// docs/adr/0011 + 0015.
+// - No passwords or keys: the apps authenticate with user-assigned managed identities, one per app, least privilege.
+// - The OpenWeatherMap key lives in Key Vault; the function's app setting holds only a Key Vault reference.
 
 param location string
 param tags object
@@ -15,23 +16,32 @@ param openWeatherMapApiKey string
 
 param webSkuName string
 
+@description('Optional e-mail address that receives the "no weather data" alert.')
+param alertEmail string = ''
+
 var sqlDatabaseName = 'weatherdb'
 var deploymentContainerName = 'app-package'
 var isFreeWebPlan = webSkuName == 'F1'
+var webAppName = 'app-${resourceToken}'
 
 // Built-in role definition IDs.
 var roles = {
   storageBlobDataOwner: 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
-  storageQueueDataContributor: '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
-  storageTableDataContributor: '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
   keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Identity shared by the web app and the function app
+// Identities: one per app, so a compromise of the public web app cannot write data, read the API key or replace
+// the function's code.
 // ---------------------------------------------------------------------------------------------------------------
-resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: 'id-${resourceToken}'
+resource functionIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'id-func-${resourceToken}'
+  location: location
+  tags: tags
+}
+
+resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'id-web-${resourceToken}'
   location: location
   tags: tags
 }
@@ -60,6 +70,62 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
+resource alertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(alertEmail)) {
+  name: 'ag-${resourceToken}'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'weather'
+    enabled: true
+    emailReceivers: [
+      {
+        name: 'owner'
+        emailAddress: alertEmail
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+// Fires when no city has been fetched successfully for 15 minutes (expired key, broken timer, provider outage).
+// Based on the weather.fetch.attempts metric the function exports with OpenTelemetry.
+resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
+  name: 'alert-no-weather-data-${resourceToken}'
+  location: location
+  tags: tags
+  properties: {
+    displayName: 'Weather Monitor: no successful weather fetch for 15 minutes'
+    severity: 1
+    enabled: true
+    scopes: [logAnalytics.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    autoMitigate: true
+    criteria: {
+      allOf: [
+        {
+          query: '''
+            AppMetrics
+            | where Name == "weather.fetch.attempts" and tostring(Properties["outcome"]) == "success"
+            | summarize Successes = sum(Sum)
+            | where Successes == 0
+            '''
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: {
+      actionGroups: empty(alertEmail) ? [] : [alertActionGroup.id]
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Key Vault with the OpenWeatherMap API key
 // ---------------------------------------------------------------------------------------------------------------
@@ -81,19 +147,30 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource keyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, identity.id, roles.keyVaultSecretsUser)
+// Who read the secret, and when (Key Vault audit log).
+resource keyVaultDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'audit-to-log-analytics'
   scope: keyVault
   properties: {
-    principalId: identity.properties.principalId
+    workspaceId: logAnalytics.id
+    logs: [{ categoryGroup: 'audit', enabled: true }]
+  }
+}
+
+// Only the function reads the key.
+resource functionKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, functionIdentity.id, roles.keyVaultSecretsUser)
+  scope: keyVault
+  properties: {
+    principalId: functionIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsUser)
   }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Azure SQL: Entra-only authentication; the apps' identity is the server administrator so that it can apply the
-// EF Core migrations on start (trade-off documented in ADR 0011).
+// Azure SQL: Entra-only authentication. The function identity is the Entra administrator so it can apply the EF Core
+// migrations on start; it then grants the web identity db_datareader (Database__ReadOnlyIdentity settings below).
 // ---------------------------------------------------------------------------------------------------------------
 resource sqlServer 'Microsoft.Sql/servers@2021-11-01' = {
   name: 'sql-${resourceToken}'
@@ -105,14 +182,16 @@ resource sqlServer 'Microsoft.Sql/servers@2021-11-01' = {
     administrators: {
       administratorType: 'ActiveDirectory'
       azureADOnlyAuthentication: true
-      login: identity.name
-      sid: identity.properties.principalId
+      login: functionIdentity.name
+      sid: functionIdentity.properties.principalId
       tenantId: subscription().tenantId
       principalType: 'Application'
     }
   }
 
   // Lets Azure services (the web and function apps) reach the server; no public client IPs are allowed.
+  // Note: this admits any Azure-hosted client network-wise (Entra authentication still applies); private endpoints
+  // remove that exposure - see "Hardening options" in docs/deployment.md.
   resource allowAzureServices 'firewallRules' = {
     name: 'AllowAllWindowsAzureIps'
     properties: {
@@ -128,9 +207,35 @@ resource sqlServer 'Microsoft.Sql/servers@2021-11-01' = {
     tags: tags
     sku: { name: 'Basic', tier: 'Basic' }
   }
+
+  // Server-level auditing (default groups: successful/failed logins and completed batches) to Log Analytics.
+  resource auditing 'auditingSettings' = {
+    name: 'default'
+    properties: {
+      state: 'Enabled'
+      isAzureMonitorTargetEnabled: true
+    }
+  }
 }
 
-var sqlConnectionString = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User Id=${identity.properties.clientId};Encrypt=True;TrustServerCertificate=False;Connect Timeout=30'
+// SQL audit records reach Log Analytics through a diagnostic setting on the master database.
+resource sqlMasterDatabase 'Microsoft.Sql/servers/databases@2021-11-01' existing = {
+  parent: sqlServer
+  name: 'master'
+}
+
+resource sqlAuditDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'audit-to-log-analytics'
+  scope: sqlMasterDatabase
+  properties: {
+    workspaceId: logAnalytics.id
+    logs: [{ category: 'SQLSecurityAuditEvents', enabled: true }]
+  }
+}
+
+// Each app appends ";User Id=<its identity's client ID>".
+var sqlConnectionStringBase = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;Encrypt=True;TrustServerCertificate=False;Connect Timeout=30'
+
 var apiKeyReference = '@Microsoft.KeyVault(SecretUri=${keyVault::apiKey.properties.secretUri})'
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -147,6 +252,8 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     allowBlobPublicAccess: false
     allowSharedKeyAccess: false
+    allowCrossTenantReplication: false
+    defaultToOAuthAuthentication: true
   }
 
   resource blobServices 'blobServices' = {
@@ -158,17 +265,16 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
-resource storageRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
-  for role in [roles.storageBlobDataOwner, roles.storageQueueDataContributor, roles.storageTableDataContributor]: {
-    name: guid(storage.id, identity.id, role)
-    scope: storage
-    properties: {
-      principalId: identity.properties.principalId
-      principalType: 'ServicePrincipal'
-      roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', role)
-    }
+// Timer triggers and Flex deployments use blobs only, so the function needs no queue or table roles.
+resource functionStorageBlobOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, functionIdentity.id, roles.storageBlobDataOwner)
+  scope: storage
+  properties: {
+    principalId: functionIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.storageBlobDataOwner)
   }
-]
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Function app (Flex Consumption, .NET 10 isolated worker)
@@ -189,12 +295,12 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   kind: 'functionapp,linux'
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: { '${identity.id}': {} }
+    userAssignedIdentities: { '${functionIdentity.id}': {} }
   }
   properties: {
     serverFarmId: functionPlan.id
     httpsOnly: true
-    keyVaultReferenceIdentity: identity.id
+    keyVaultReferenceIdentity: functionIdentity.id
     functionAppConfig: {
       deployment: {
         storage: {
@@ -202,7 +308,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: '${storage.properties.primaryEndpoints.blob}${deploymentContainerName}'
           authentication: {
             type: 'UserAssignedIdentity'
-            userAssignedIdentityResourceId: identity.id
+            userAssignedIdentityResourceId: functionIdentity.id
           }
         }
       }
@@ -217,25 +323,30 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
     }
     siteConfig: {
       minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      // Timer-only app: nothing needs to call it, so inbound HTTP (including the admin API) is closed.
+      ipSecurityRestrictionsDefaultAction: 'Deny'
       appSettings: [
         { name: 'AzureWebJobsStorage__accountName', value: storage.name }
         { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
-        { name: 'AzureWebJobsStorage__clientId', value: identity.properties.clientId }
+        { name: 'AzureWebJobsStorage__clientId', value: functionIdentity.properties.clientId }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
-        { name: 'ConnectionStrings__WeatherDb', value: sqlConnectionString }
+        { name: 'ConnectionStrings__WeatherDb', value: '${sqlConnectionStringBase};User Id=${functionIdentity.properties.clientId}' }
         { name: 'Database__ApplyMigrationsOnStartup', value: 'true' }
+        { name: 'Database__ReadOnlyIdentity__Name', value: webIdentity.name }
+        { name: 'Database__ReadOnlyIdentity__ClientId', value: webIdentity.properties.clientId }
         { name: 'OpenWeatherMap__ApiKey', value: apiKeyReference }
       ]
     }
   }
   dependsOn: [
-    storageRoles
-    keyVaultSecretsUser
+    functionStorageBlobOwner
+    functionKeyVaultSecretsUser
   ]
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Web app (App Service, Linux): MVC API + React build in wwwroot
+// Web app (App Service, Linux): MVC API + React build in wwwroot; read-only database access
 // ---------------------------------------------------------------------------------------------------------------
 resource webPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: 'plan-web-${resourceToken}'
@@ -247,34 +358,52 @@ resource webPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
 }
 
 resource webApp 'Microsoft.Web/sites@2024-04-01' = {
-  name: 'app-${resourceToken}'
+  name: webAppName
   location: location
   tags: union(tags, { 'azd-service-name': 'web' })
   kind: 'app,linux'
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: { '${identity.id}': {} }
+    userAssignedIdentities: { '${webIdentity.id}': {} }
   }
   properties: {
     serverFarmId: webPlan.id
     httpsOnly: true
+    clientAffinityEnabled: false // stateless app: no sticky-session cookie
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
       alwaysOn: !isFreeWebPlan
-      healthCheckPath: isFreeWebPlan ? null : '/health'
-      minTlsVersion: '1.2'
+      // Liveness only: a database outage must not make App Service recycle healthy instances.
+      healthCheckPath: isFreeWebPlan ? null : '/health/live'
+      minTlsVersion: '1.3'
       ftpsState: 'Disabled'
       http20Enabled: true
       appSettings: [
-        { name: 'ConnectionStrings__WeatherDb', value: sqlConnectionString }
-        { name: 'Database__ApplyMigrationsOnStartup', value: 'true' }
+        { name: 'ConnectionStrings__WeatherDb', value: '${sqlConnectionStringBase};User Id=${webIdentity.properties.clientId}' }
+        { name: 'Database__ApplyMigrationsOnStartup', value: 'false' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
-        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
+        // Client IPs for the rate limiter come from X-Forwarded-For set by the App Service front end.
+        { name: 'ASPNETCORE_FORWARDEDHEADERS_ENABLED', value: 'true' }
+        // Host header filtering; add custom domains here (semicolon separated).
+        { name: 'AllowedHosts', value: '${webAppName}.azurewebsites.net' }
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
       ]
     }
   }
 }
+
+// Deployments authenticate with Entra ID (azd); username/password publishing (FTP and SCM basic auth) is disabled.
+resource basicAuthPolicies 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-04-01' = [
+  for policy in [
+    { site: webApp.name, name: 'ftp' }
+    { site: webApp.name, name: 'scm' }
+    { site: functionApp.name, name: 'ftp' }
+    { site: functionApp.name, name: 'scm' }
+  ]: {
+    name: '${policy.site}/${policy.name}'
+    properties: { allow: false }
+  }
+]
 
 output webUrl string = 'https://${webApp.properties.defaultHostName}'
 output webAppName string = webApp.name

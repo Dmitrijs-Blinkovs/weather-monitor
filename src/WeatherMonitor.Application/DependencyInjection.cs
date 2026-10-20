@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using WeatherMonitor.Application.History;
 using WeatherMonitor.Application.Ingestion;
+using WeatherMonitor.Application.Retention;
 
 namespace WeatherMonitor.Application;
 
@@ -24,7 +25,22 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         services.TryAddSingleton(TimeProvider.System);
+        services.AddMetrics();
+        services.TryAddSingleton<IngestionMetrics>();
         services.AddScoped<IWeatherIngestionService, WeatherIngestionService>();
+        return services;
+    }
+
+    /// <summary>Registers the purge of history older than <c>Retention:Days</c> (used by the Azure Function).</summary>
+    public static IServiceCollection AddDataRetention(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<DataRetentionOptions>()
+            .Bind(configuration.GetSection(DataRetentionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IDataRetentionService, DataRetentionService>();
         return services;
     }
 }

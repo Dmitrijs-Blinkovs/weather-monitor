@@ -26,14 +26,16 @@ jobs:
     name: .NET build and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
 
       # The web project references the React project (.esproj), so the .NET build needs Node and the npm packages.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -53,7 +55,7 @@ jobs:
 
       - name: Coverage report
         if: ${{ !cancelled() }}
-        uses: danielpalme/ReportGenerator-GitHub-Action@v5
+        uses: danielpalme/ReportGenerator-GitHub-Action@d3ebf1f760f7d8ab92cc44d9bcfee7ad73722a31 # v5.5.11
         with:
           reports: TestResults/*.cobertura.xml
           targetdir: coverage-report
@@ -67,7 +69,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dotnet-test-results
           path: |
@@ -82,22 +84,26 @@ jobs:
       run:
         working-directory: ${{ env.CLIENT_DIR }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: ${{ env.CLIENT_DIR }}/package-lock.json
 
       - run: npm ci
+      - name: Fail on known high or critical vulnerabilities in production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run test:coverage
       - run: npm run build # type-checks app, tests and e2e (tsc -b) and builds the production bundle
 
       - name: Upload coverage
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: frontend-coverage
           path: ${{ env.CLIENT_DIR }}/coverage/
@@ -107,12 +113,52 @@ jobs:
     name: Infrastructure templates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - name: Compile and lint Bicep (warnings are errors)
         run: |
           az bicep install
           az bicep build --file infra/main.bicep --stdout > /dev/null 2> bicep.log || { cat bicep.log; exit 1; }
           if grep -q "Warning" bicep.log; then cat bicep.log; exit 1; fi
+
+  migrations:
+    name: Migrations on SQL Server
+    runs-on: ubuntu-latest
+    env:
+      # Throwaway password for an ephemeral CI container; not a secret.
+      SA_PASSWORD: Ci-Only-Throwaway-9f3
+    services:
+      sql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Ci-Only-Throwaway-9f3
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $MSSQL_SA_PASSWORD -C -b -Q 'SELECT 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - run: dotnet tool restore
+
+      # The unit tests build the schema from the model on SQLite; this runs the real migrations on SQL Server,
+      # including the SQL Server-only parts (INCLUDE columns), then rolls everything back and applies it again.
+      - name: Apply, roll back and re-apply all migrations
+        run: |
+          connection="Server=localhost,1433;Database=WeatherMonitorCi;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
+          ef() { dotnet ef database update "$@" --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --connection "$connection"; }
+          ef
+          ef 0
+          ef
 
   e2e:
     name: Browser tests (Playwright)
@@ -121,9 +167,11 @@ jobs:
       run:
         working-directory: ${{ env.CLIENT_DIR }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -135,7 +183,7 @@ jobs:
 
       - name: Upload Playwright report
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: |

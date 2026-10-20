@@ -21,10 +21,16 @@ GET {{Web}}/api/weather/history?from=2026-10-20T00:00:00Z&to=2026-10-19T00:00:00
 ### Invalid: page size above 200 -> 400 problem details
 GET {{Web}}/api/logs?pageSize=500
 
+### Invalid: page above 1000 -> 400 problem details (filter instead of paging that deep)
+GET {{Web}}/api/logs?page=1001
+
 ### Unknown API route -> 404 problem details (not the SPA)
 GET {{Web}}/api/unknown
 
-### Health (includes the database)
+### Liveness: the process answers (App Service health probe)
+GET {{Web}}/health/live
+
+### Readiness: database reachable and a successful fetch within 10 minutes (Degraded otherwise)
 GET {{Web}}/health
 
 ### OpenAPI document (development only)

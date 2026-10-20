@@ -18,7 +18,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 86 .NET tests (xUnit v3), 43 front-end unit/component tests (Vitest), 18 browser tests (Playwright) |
+| Unit tests | 115 .NET tests (xUnit v3), 54 front-end unit/component tests (Vitest), 19 browser tests (Playwright) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -36,7 +36,8 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Setting the environment up from scratch, by hand or with an AI assistant |
 | [docs/debugging-in-visual-studio.md](docs/debugging-in-visual-studio.md) | Running and debugging step by step in Visual Studio 2026 |
-| [docs/deployment.md](docs/deployment.md) | Deploying to Azure with `azd` and GitHub Actions (OIDC) |
+| [docs/deployment.md](docs/deployment.md) | Deploying to Azure with `azd` and GitHub Actions (OIDC), operations, hardening options |
+| [docs/security.md](docs/security.md) | Threat model, OWASP Top 10 / API Top 10 / CI/CD Top 10 mapping, accepted risks |
 | [docs/architecture.md](docs/architecture.md) | Components, data model, flows, API, front end, configuration, testing |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records - why things are the way they are |
 | [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | Orientation, conventions and pitfalls for contributors and AI agents |
@@ -49,6 +50,7 @@ flowchart LR
     OWM[(OpenWeatherMap API)]
     subgraph Azure Functions
         F[FetchWeatherFunction<br/>timer: every minute]
+        P[PurgeOldDataFunction<br/>timer: daily]
     end
     subgraph ASP.NET Core
         API[MVC API controllers<br/>/api/logs, /api/weather/history, /api/cities]
@@ -58,6 +60,7 @@ flowchart LR
 
     F -- "HTTP, 3 cities in parallel" --> OWM
     F -- "EF Core: attempt + snapshot" --> DB
+    P -- "EF Core: delete > 90 days" --> DB
     API -- "EF Core: read-only queries" --> DB
     SPA -- "fetch JSON" --> API
 ```
@@ -67,11 +70,12 @@ The solution follows a clean / onion layering; dependencies only point inwards:
 ```
 src/
   WeatherMonitor.Domain           Entities FetchAttempt and WeatherSnapshot, value object CurrentWeather. No dependencies.
-  WeatherMonitor.Application      Use cases (ingestion, history) and the ports they need:
+  WeatherMonitor.Application      Use cases (ingestion, history, retention) and the ports they need:
                                   IWeatherProvider, IFetchAttemptRepository, IFetchLogReader, IWeatherHistoryReader.
   WeatherMonitor.Infrastructure   Adapters: EF Core DbContext, migrations, repository/readers, OpenWeatherMap HTTP client.
-  WeatherMonitor.Functions        Azure Functions isolated worker; the timer function only delegates to the ingestion use case.
-  WeatherMonitor.Web              ASP.NET Core MVC API controllers; hosts the built React app.
+  WeatherMonitor.Functions        Azure Functions isolated worker; thin timer functions for ingestion and retention.
+  WeatherMonitor.Web              ASP.NET Core MVC API controllers, security headers, rate limiting, caching, health
+                                  checks; hosts the built React app.
   weather-monitor.client          React 19 + TypeScript + Vite, TanStack Query, Recharts; Playwright tests in e2e/.
 tests/
   WeatherMonitor.*.Tests          One test project per production project.
@@ -120,7 +124,17 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
   pages pass axe-core WCAG 2 A/AA checks.
 - **Database migrations.** EF Core migrations live in Infrastructure. With `Database:ApplyMigrationsOnStartup` the hosts
   apply them before they start serving (EF Core takes a database lock, so both hosts can do it safely); a test fails if the
-  model changes without a migration.
+  model changes without a migration, and CI applies and rolls back every migration on a real SQL Server.
+- **Bounded growth.** A daily function deletes history older than 90 days in batches (`Retention:Days`,
+  [ADR 0014](docs/adr/0014-data-retention.md)); without it the database would grow by ~8,600 rows a day forever.
+- **Observable, including "silent" failures.** Expected failures are values, so a run in which every city fails is still
+  a successful invocation. OpenTelemetry metrics (`weather.fetch.attempts` per city and outcome), traces of every run, a
+  `/health` check that turns `Degraded` without a successful fetch in 10 minutes, and an Azure alert after 15 minutes
+  without data make that visible ([ADR 0016](docs/adr/0016-observability.md)).
+- **Secure by default.** Strict CSP and security headers on every response, HSTS, per-client rate limiting plus a global
+  concurrency limit, output caching, caps on every query parameter, a 64 KB cap and plausibility checks on provider
+  responses, one managed identity per app with read-only database access for the web app, and a deployment pipeline whose
+  build job never sees a credential. Mapping to the OWASP Top 10 lists: [docs/security.md](docs/security.md).
 
 ## Running locally
 
@@ -183,40 +197,47 @@ cd src/weather-monitor.client && npm test
 cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 ```
 
-- **Application** - ingestion (parallel fetch, failure isolation, cancellation, timing, country codes), history grouping
-  and summary, options validation, domain invariants.
-- **Infrastructure** - the OpenWeatherMap client against a stubbed `HttpMessageHandler` (parsing, error mapping,
-  timeouts, key redaction); repository and readers against in-memory SQLite with the real EF Core model; migrations in
-  sync with the model; DI composition of both hosts.
+- **Application** - ingestion (parallel fetch, failure isolation, cancellation, timing, country codes, metrics), history
+  grouping and summary, retention batches, options validation, domain invariants and error-text sanitising.
+- **Infrastructure** - the OpenWeatherMap client against a stubbed `HttpMessageHandler` (parsing, content type,
+  plausibility, error mapping, timeouts, key redaction); repository (including batched deletes) and readers against
+  in-memory SQLite with the real EF Core model; migrations in sync with the model; DI composition of both hosts.
 - **Web** - the real ASP.NET Core pipeline via `WebApplicationFactory`: routing, binding, validation (RFC 7807 problems),
-  JSON shape, SPA fallback vs. API 404/405.
-- **Functions** - timer binding (every minute), shipped city configuration, delegation to the ingestion use case.
-- **Front end (Vitest)** - date-range rules, formatting, chart data shaping, tooltip, filters, tables and both pages
-  against a fake API.
+  JSON shape, SPA fallback vs. API 404/405, security headers (also on errors), rate limiting, health endpoints, output
+  caching and compression.
+- **Functions** - timer bindings (every minute, daily purge), shipped configuration, delegation to the use cases.
+- **Front end (Vitest)** - date-range rules, formatting, chart data shaping and downsampling, tooltip, filters, tables,
+  paging limits, the error boundary and both pages against a fake API.
 - **Browser (Playwright)** - both pages in Chromium against the production build with a mocked API: chart with all
   cities, tooltip, presets and custom date/time range (time-zone conversion), table view, fetch log filters and paging,
-  error state, English UI in a Latvian browser, axe-core accessibility in light and dark mode.
+  error state, English UI in a Latvian browser, axe-core accessibility in light and dark mode, no CSP violations.
 
 ## CI/CD
 
-- **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and pull request: .NET build and tests with coverage summary,
-  front-end lint/tests/coverage/build, Playwright browser tests, Bicep compile and lint.
-- **CD** ([deploy.yml](.github/workflows/deploy.yml)): Azure Developer CLI provisions `infra/` and deploys both apps
-  with OpenID Connect (no Azure secrets in GitHub), behind the `production` environment, with a health-check smoke test.
-  Manual until the first deployment - see [docs/deployment.md](docs/deployment.md).
-- **Dependabot** keeps NuGet, npm and GitHub Actions dependencies current.
+- **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and pull request: .NET build (high/critical NuGet
+  advisories fail it) and tests with coverage summary, `npm audit`, front-end lint/tests/coverage/build, Playwright
+  browser tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
+- **CD** ([deploy.yml](.github/workflows/deploy.yml)) after a green CI run on `main` once Azure is configured: a build job
+  without credentials packages both apps; the deploy job (OpenID Connect, `production` environment with approval)
+  provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` - see
+  [docs/deployment.md](docs/deployment.md).
+- **Supply chain:** actions pinned to commit SHAs, lockfiles and central package versions, Dependabot for NuGet, npm and
+  GitHub Actions with a 3-day cooldown.
 
 ## API
 
 | Method & path | Description |
 |---|---|
-| `GET /api/logs?page=1&pageSize=50&city=Riga&status=Failure` | Fetch attempts, newest first. `pageSize` 1-200; `status` is `Success` or `Failure`. |
+| `GET /api/logs?page=1&pageSize=50&city=Riga&status=Failure` | Fetch attempts, newest first. `page` 1-1,000, `pageSize` 1-200; `status` is `Success` or `Failure`. |
 | `GET /api/weather/history?from=2026-10-18T12:00:00Z&to=2026-10-19T12:00:00Z` | Per-city series plus country, latest temperature, period min/max and last update time. Range up to 31 days. |
 | `GET /api/cities` | Cities that have been fetched at least once. |
-| `GET /health` | Health check including the database. |
+| `GET /health/live` | Liveness: the process answers (`Healthy`). Used by the App Service health probe. |
+| `GET /health` | Readiness: database reachable and a successful fetch within 10 minutes (`Healthy`), `Degraded` without recent data, `503 Unhealthy` without a database. |
 
 Invalid queries return `400` with an RFC 7807 `application/problem+json` body; unknown API routes return `404`, a wrong
-HTTP method `405`. In development the OpenAPI document is served at `/openapi/v1.json`.
+HTTP method `405`, more than `RateLimiting:PermitsPerMinute` requests per client `429` with `Retry-After`. Responses are
+cached briefly on the server (history 60 s, log 10 s, cities 5 min). In development the OpenAPI document is served at
+`/openapi/v1.json`.
 
 ## Configuration
 
@@ -226,4 +247,8 @@ HTTP method `405`. In development the OpenAPI document is served at `/openapi/v1
 | `OpenWeatherMap:ApiKey` | Functions | API key (user secrets locally, Key Vault reference in Azure) |
 | `OpenWeatherMap:BaseUrl` | Functions | Defaults to `https://api.openweathermap.org/` |
 | `Weather:Cities` | Functions | Cities to fetch as `{ "Name": "Rome", "CountryCode": "IT" }`; London/GB, Rome/IT, Riga/LV in `appsettings.json` |
-| `Database:ApplyMigrationsOnStartup` | Functions, Web | Apply EF Core migrations on start (on in development and in the Azure templates) |
+| `Database:ApplyMigrationsOnStartup` | Functions, Web | Apply EF Core migrations on start (on in development; in Azure on for the function only) |
+| `Database:ReadOnlyIdentity:Name` / `:ClientId` | Functions | Managed identity that gets `db_datareader` after migrating (the web app's identity in Azure); unset locally |
+| `Retention:Days` / `Retention:BatchSize` | Functions | Keep history this many days (90; `0` disables the purge), delete in batches of 5,000 |
+| `RateLimiting:PermitsPerMinute` | Web | Requests per client and minute on `/api/*` and `/health` (120) |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Functions, Web | Enables the OpenTelemetry export to Application Insights; nothing is exported without it |

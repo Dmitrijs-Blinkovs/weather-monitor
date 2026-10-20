@@ -153,6 +153,47 @@ public sealed class OpenWeatherMapClientTests
     }
 
     [Fact]
+    public async Task A_successful_response_that_is_not_json_is_a_failure()
+    {
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<html>captive portal</html>", Encoding.UTF8, "text/html"),
+        });
+
+        var result = await CreateClient(handler).GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Unexpected content type 'text/html'");
+    }
+
+    [Theory]
+    [InlineData("""{"dt":1792400400,"main":{"temp":250,"temp_min":1,"temp_max":2},"sys":{"country":"LV"}}""")]
+    [InlineData("""{"dt":1792400400,"main":{"temp":5,"temp_min":7,"temp_max":3},"sys":{"country":"LV"}}""")]
+    public async Task Implausible_temperatures_are_a_failure_instead_of_data(string body)
+    {
+        var result = await CreateClient(Respond(HttpStatusCode.OK, body))
+            .GetCurrentWeatherAsync("Riga", null, TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldStartWith("Implausible temperatures");
+    }
+
+    [Theory]
+    [InlineData("http://api.openweathermap.org/", false)]
+    [InlineData("not a url", false)]
+    [InlineData("https://api.openweathermap.org/", true)]
+    public void The_base_url_must_use_https_because_the_key_is_in_the_query_string(string baseUrl, bool valid)
+    {
+        var options = new OpenWeatherMapOptions { BaseUrl = baseUrl, ApiKey = ApiKey };
+
+        var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        var isValid = System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
+            options, new System.ComponentModel.DataAnnotations.ValidationContext(options), results, validateAllProperties: true);
+
+        isValid.ShouldBe(valid);
+    }
+
+    [Fact]
     public async Task A_response_missing_required_fields_is_a_failure()
     {
         var result = await CreateClient(Respond(HttpStatusCode.OK, """{"main":{"temp":5},"dt":1792400400}"""))

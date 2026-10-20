@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using WeatherMonitor.Application.Abstractions;
 using WeatherMonitor.Application.FetchLog;
@@ -15,6 +17,9 @@ public static class DependencyInjection
     public const string ConnectionStringName = "WeatherDb";
     public const string ApplyMigrationsOnStartupKey = "Database:ApplyMigrationsOnStartup";
 
+    /// <summary>A current-weather response is about 500 bytes; anything far larger is refused, not buffered.</summary>
+    public const long MaxWeatherResponseBytes = 64 * 1024;
+
     /// <summary>Registers the SQL Server database context, repositories and readers.</summary>
     public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
     {
@@ -25,19 +30,38 @@ public static class DependencyInjection
                 ?? throw new InvalidOperationException(
                     $"Connection string '{ConnectionStringName}' is not configured.");
 
-            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure());
+            // Few, short retries: a run must finish within the function timeout (55 s) even when SQL is flaky.
+            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorNumbersToAdd: null));
         });
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IFetchAttemptRepository, FetchAttemptRepository>();
         services.AddScoped<IFetchLogReader, FetchLogReader>();
         services.AddScoped<IWeatherHistoryReader, WeatherHistoryReader>();
 
+        services.AddOptions<DatabaseOptions>().Bind(configuration.GetSection(DatabaseOptions.SectionName));
         if (configuration.GetValue<bool>(ApplyMigrationsOnStartupKey))
         {
             services.AddHostedService<DatabaseMigrationService>();
         }
 
         return services;
+    }
+
+    /// <summary>Tag of the checks that decide whether the app can serve data (database reachable, data fresh).</summary>
+    public const string ReadinessTag = "ready";
+
+    /// <summary>Adds the database check and the data-freshness check, both tagged <see cref="ReadinessTag"/>.</summary>
+    public static IHealthChecksBuilder AddPersistenceHealthChecks(this IHealthChecksBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return builder
+            .AddDbContextCheck<WeatherDbContext>("database", tags: [ReadinessTag])
+            .AddCheck<DataFreshnessHealthCheck>("data-freshness", HealthStatus.Degraded, [ReadinessTag]);
     }
 
     /// <summary>Registers the OpenWeatherMap client as the <see cref="IWeatherProvider"/>.</summary>
@@ -52,6 +76,7 @@ public static class DependencyInjection
             {
                 var baseUrl = serviceProvider.GetRequiredService<IOptions<OpenWeatherMapOptions>>().Value.BaseUrl;
                 client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+                client.MaxResponseContentBufferSize = MaxWeatherResponseBytes;
             })
             // The API key travels in the query string, and the default HttpClient logging writes full URIs.
             .RemoveAllLoggers()
@@ -61,6 +86,13 @@ public static class DependencyInjection
                 resilience.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
                 resilience.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
                 resilience.Retry.MaxRetryAttempts = 2;
+
+                // Tuned for a handful of calls per minute (the default needs 100 calls per 30 s and never opens):
+                // after two failing runs the circuit opens, the next run fails fast, the one after probes again.
+                resilience.CircuitBreaker.MinimumThroughput = 6;
+                resilience.CircuitBreaker.FailureRatio = 0.5;
+                resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(2);
+                resilience.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(45);
             });
 
         return services;

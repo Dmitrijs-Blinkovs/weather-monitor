@@ -28,8 +28,21 @@ public sealed class CompositionTests
         using var scope = provider.CreateScope();
 
         scope.ServiceProvider.GetRequiredService<IWeatherIngestionService>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<WeatherMonitor.Application.Retention.IDataRetentionService>().ShouldNotBeNull();
         var cities = scope.ServiceProvider.GetRequiredService<IOptions<WeatherIngestionOptions>>().Value.Cities;
         cities.Select(city => (city.Name, city.CountryCode)).ShouldBe([("London", "GB"), ("Riga", null)]);
+    }
+
+    [Fact]
+    public void The_weather_client_refuses_oversized_responses_instead_of_buffering_them()
+    {
+        using var provider = BuildFunctionServices(FunctionSettings);
+
+        // AddHttpClient<TClient, TImplementation> names the client after the service type.
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(Application.Abstractions.IWeatherProvider));
+
+        client.MaxResponseContentBufferSize.ShouldBe(DependencyInjection.MaxWeatherResponseBytes);
+        client.BaseAddress.ShouldBe(new Uri("https://api.openweathermap.org/"));
     }
 
     [Fact]
@@ -76,6 +89,7 @@ public sealed class CompositionTests
         return new ServiceCollection()
             .AddLogging()
             .AddWeatherIngestion(configuration)
+            .AddDataRetention(configuration)
             .AddPersistence(configuration)
             .AddOpenWeatherMap(configuration)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });

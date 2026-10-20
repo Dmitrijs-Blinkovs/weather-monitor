@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using WeatherMonitor.Application.Abstractions;
 using WeatherMonitor.Domain;
 
@@ -12,5 +13,17 @@ internal sealed class FetchAttemptRepository(WeatherDbContext dbContext) : IFetc
         // Snapshots are owned by their attempts and are inserted with them; SaveChanges runs in one transaction.
         dbContext.FetchAttempts.AddRange(attempts);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task<int> DeleteOlderThanAsync(DateTime cutoffUtc, int batchSize, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+
+        // One set-based DELETE per batch (no entities loaded); snapshots follow through ON DELETE CASCADE.
+        return dbContext.FetchAttempts
+            .Where(attempt => attempt.AttemptedAtUtc < cutoffUtc)
+            .OrderBy(attempt => attempt.Id)
+            .Take(batchSize)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 }

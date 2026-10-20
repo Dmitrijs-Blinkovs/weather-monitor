@@ -1,3 +1,6 @@
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -7,8 +10,10 @@ using WeatherMonitor.Domain;
 
 namespace WeatherMonitor.Application.Tests.Ingestion;
 
-public sealed class WeatherIngestionServiceTests
+public sealed class WeatherIngestionServiceTests : IDisposable
 {
+    private readonly ServiceProvider _services = new ServiceCollection().AddMetrics().BuildServiceProvider();
+
     private static readonly CityOptions[] Cities =
     [
         new() { Name = "London", CountryCode = "GB" },
@@ -144,11 +149,30 @@ public sealed class WeatherIngestionServiceTests
         saveToken.IsCancellationRequested.ShouldBeFalse(); // saved with its own short timeout, not the cancelled token
     }
 
+    [Fact]
+    public async Task Every_attempt_is_counted_per_city_and_outcome_for_monitoring()
+    {
+        var meterFactory = _services.GetRequiredService<IMeterFactory>();
+        using var attempts = new MetricCollector<long>(meterFactory, IngestionMetrics.MeterName, "weather.fetch.attempts");
+        _provider.GetCurrentWeatherAsync("Rome", Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(WeatherFetchResult.Failure(401, "Invalid API key"));
+
+        await CreateService().IngestAsync(TestContext.Current.CancellationToken);
+
+        var measurements = attempts.GetMeasurementSnapshot();
+        measurements.Count.ShouldBe(3);
+        measurements.ShouldContain(m => (string?)m.Tags["city"] == "Rome" && (string?)m.Tags["outcome"] == "failure");
+        measurements.Count(m => (string?)m.Tags["outcome"] == "success").ShouldBe(2);
+    }
+
+    public void Dispose() => _services.Dispose();
+
     private WeatherIngestionService CreateService(CityOptions[]? cities = null) =>
         new(
             _provider,
             _repository,
             Options.Create(new WeatherIngestionOptions { Cities = [.. cities ?? Cities] }),
             _timeProvider,
+            new IngestionMetrics(_services.GetRequiredService<IMeterFactory>()),
             NullLogger<WeatherIngestionService>.Instance);
 }

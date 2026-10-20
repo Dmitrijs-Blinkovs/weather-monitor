@@ -41,7 +41,8 @@ instance is running - find it before starting a second one.
 
 - Functions output contains `Functions: FetchWeather: timerTrigger`, then `Weather ingestion completed: 3 succeeded, 0 failed`.
   Do not wait: `POST http://localhost:7071/admin/functions/FetchWeather` with JSON body `{"input":""}` -> 202.
-- `GET http://localhost:5180/health` -> `Healthy`.
+- `GET http://localhost:5180/health/live` -> `Healthy`; `GET http://localhost:5180/health` -> `Healthy` after the
+  first successful fetch (`Degraded` before it).
 - Database (PowerShell, no sqlcmd needed):
   ```powershell
   $c = New-Object System.Data.SqlClient.SqlConnection 'Server=(localdb)\MSSQLLocalDB;Database=WeatherMonitor;Integrated Security=True'

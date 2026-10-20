@@ -1,16 +1,12 @@
 {
   "version": "2.0",
   "functionTimeout": "00:00:55",
+  "telemetryMode": "OpenTelemetry",
   "logging": {
     "logLevel": {
       "default": "Information",
-      "Function.FetchWeather": "Information"
-    },
-    "applicationInsights": {
-      "samplingSettings": {
-        "isEnabled": true,
-        "excludedTypes": "Request"
-      }
+      "Function.FetchWeather": "Information",
+      "Function.PurgeOldData": "Information"
     }
   }
 }

@@ -19,8 +19,10 @@ internal sealed class FetchAttemptConfiguration : IEntityTypeConfiguration<Fetch
             .HasForeignKey<WeatherSnapshot>(snapshot => snapshot.FetchAttemptId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // The log page lists attempts newest first, optionally filtered by city.
+        // The log page lists attempts newest first, optionally filtered by city or by result; the retention purge and
+        // the data-freshness health check also seek on the attempt time.
         builder.HasIndex(attempt => attempt.AttemptedAtUtc);
         builder.HasIndex(attempt => new { attempt.City, attempt.AttemptedAtUtc });
+        builder.HasIndex(attempt => new { attempt.IsSuccess, attempt.AttemptedAtUtc });
     }
 }

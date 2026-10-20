@@ -36,6 +36,28 @@ public sealed class FetchAttemptRepositoryTests : SqliteTestDatabase
     }
 
     [Fact]
+    public async Task Deleting_old_attempts_removes_their_snapshots_and_keeps_newer_data()
+    {
+        await SeedAsync(
+            Success("London", Now.AddDays(-100)),
+            Failure("Rome", Now.AddDays(-95)),
+            Success("Riga", Now.AddDays(-91)),
+            Success("London", Now.AddDays(-1)));
+
+        await using (var context = CreateContext())
+        {
+            var deleted = await new FetchAttemptRepository(context)
+                .DeleteOlderThanAsync(Now.AddDays(-90), batchSize: 2, TestContext.Current.CancellationToken);
+            deleted.ShouldBe(2); // one batch, oldest first
+        }
+
+        await using var verify = CreateContext();
+        (await verify.FetchAttempts.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(2);
+        var remainingSnapshots = await verify.WeatherSnapshots.Select(snapshot => snapshot.City).ToListAsync(TestContext.Current.CancellationToken);
+        remainingSnapshots.ShouldBe(["Riga", "London"], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task Timestamps_are_read_back_as_utc()
     {
         await SeedAsync(Success("Riga", Now));

@@ -21,12 +21,19 @@ export type RangePresetId = (typeof RANGE_PRESETS)[number]['id'];
 /** Either a rolling preset (re-evaluated against "now" on every refresh) or a fixed custom range. */
 export type RangeSelection = { kind: 'preset'; presetId: RangePresetId } | { kind: 'custom'; range: DateRange };
 
+const MINUTE = 60 * 1000;
+
+/**
+ * A rolling preset ends at the start of the next minute: every request within the same minute is identical (so the
+ * server can answer it from its cache) and still covers everything observed up to now.
+ */
 export function resolveRange(selection: RangeSelection, now: Date): DateRange {
   if (selection.kind === 'custom') {
     return selection.range;
   }
   const preset = RANGE_PRESETS.find((candidate) => candidate.id === selection.presetId) ?? RANGE_PRESETS[2];
-  return { from: new Date(now.getTime() - preset.durationMs), to: now };
+  const to = Math.floor(now.getTime() / MINUTE) * MINUTE + MINUTE;
+  return { from: new Date(to - preset.durationMs), to: new Date(to) };
 }
 
 export function validateRange(range: DateRange): string | null {

@@ -57,6 +57,8 @@ namespace WeatherMonitor.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("City", "AttemptedAtUtc");
 
+                    b.HasIndex("IsSuccess", "AttemptedAtUtc");
+
                     b.ToTable("FetchAttempts", (string)null);
                 });
 

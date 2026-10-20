@@ -4,11 +4,18 @@ import { fromLocalInputValue, resolveRange, toLocalInputValue, validateRange } f
 const now = new Date('2026-10-19T12:00:00Z');
 
 describe('resolveRange', () => {
-  it('resolves a rolling preset against the given time', () => {
-    const range = resolveRange({ kind: 'preset', presetId: '6h' }, now);
+  it('resolves a rolling preset to whole minutes ending at the start of the next minute', () => {
+    const range = resolveRange({ kind: 'preset', presetId: '6h' }, new Date('2026-10-19T12:00:42.317Z'));
 
-    expect(range.to).toEqual(now);
-    expect(now.getTime() - range.from.getTime()).toBe(6 * 60 * 60 * 1000);
+    expect(range.to.toISOString()).toBe('2026-10-19T12:01:00.000Z');
+    expect(range.from.toISOString()).toBe('2026-10-19T06:01:00.000Z');
+  });
+
+  it('gives every request within the same minute the same range, so the server can cache it', () => {
+    const early = resolveRange({ kind: 'preset', presetId: '24h' }, new Date('2026-10-19T12:00:01Z'));
+    const late = resolveRange({ kind: 'preset', presetId: '24h' }, new Date('2026-10-19T12:00:59Z'));
+
+    expect(late).toEqual(early);
   });
 
   it('returns a custom range unchanged', () => {

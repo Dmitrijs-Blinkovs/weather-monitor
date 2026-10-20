@@ -1,23 +1,81 @@
 name: Deploy to Azure
 
-# Manual only until the Azure environment is set up (docs/deployment.md). It provisions infra/ with Bicep and
-# deploys both apps with the Azure Developer CLI, authenticating through OpenID Connect - no secrets for Azure.
+# Provisions infra/ with Bicep and deploys both apps with the Azure Developer CLI (docs/deployment.md).
+# - Runs after a green CI run on main, or manually from main; skipped until the Azure variables are configured.
+# - The build job compiles and packages without any Azure credential or secret, so third-party build code
+#   (npm lifecycle scripts, MSBuild targets) never sees them. The deploy job holds the OIDC token but runs no
+#   build tooling: it only provisions and uploads the packages produced by the build job.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  id-token: write # OIDC token for Azure login
   contents: read
 
 concurrency:
-  group: deploy-${{ vars.AZURE_ENV_NAME }}
+  group: deploy-production
   cancel-in-progress: false
 
 jobs:
+  build:
+    name: Build packages (no credentials)
+    # The workflow_run branch filter matches only the branch NAME, which a pull request from a fork can also call
+    # "main"; deploy only CI runs of pushes to this repository.
+    if: >-
+      vars.AZURE_ENV_NAME != '' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          # For workflow_run, build exactly the commit CI tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/weather-monitor.client/package-lock.json
+
+      - name: Install front-end packages
+        working-directory: src/weather-monitor.client
+        run: npm ci
+
+      # The web publish builds the React client into wwwroot.
+      - name: Publish
+        run: |
+          dotnet publish src/WeatherMonitor.Web --configuration Release --output publish/web
+          dotnet publish src/WeatherMonitor.Functions --configuration Release --output publish/functions
+          (cd publish/web && zip -qr ../web.zip .)
+          (cd publish/functions && zip -qr ../functions.zip .)
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: packages
+          path: |
+            publish/web.zip
+            publish/functions.zip
+          retention-days: 7
+
   deploy:
     name: Provision and deploy
+    needs: build
     runs-on: ubuntu-latest
-    # Protect this environment in GitHub (Settings > Environments) with required reviewers.
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Azure login; only this job has it
+    # Protect this environment (Settings > Environments): required reviewers, deployments from main only.
     environment:
       name: production
       url: ${{ steps.outputs.outputs.web_url }}
@@ -28,58 +86,62 @@ jobs:
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       WEB_SKU_NAME: ${{ vars.WEB_SKU_NAME || 'B1' }}
-      OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
+      ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
     steps:
-      - uses: actions/checkout@v5
+      # Only the templates and azure.yaml are needed here; nothing is built in this job.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Check configuration
         run: |
           missing=""
-          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENV_NAME AZURE_LOCATION OPENWEATHERMAP_API_KEY; do
-            [ -z "${!name}" ] && missing="$missing $name"
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENV_NAME AZURE_LOCATION; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
-            echo "::error::Missing repository variables/secrets:$missing (see docs/deployment.md)"
+            echo "::error::Missing repository variables:$missing (see docs/deployment.md)"
             exit 1
           fi
 
-      - uses: Azure/setup-azd@v2
-
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          dotnet-version: 10.0.x
+          name: packages
+          path: packages
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: src/weather-monitor.client/package-lock.json
-
-      # The web app publish builds the React client into wwwroot.
-      - name: Install front-end packages
-        working-directory: src/weather-monitor.client
-        run: npm ci
+      - uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2.4.0
 
       - name: Log in to Azure (OIDC)
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider "github" --tenant-id "$AZURE_TENANT_ID"
 
       - name: Provision infrastructure
+        env:
+          # An environment secret of "production": only this step sees it.
+          OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
         run: azd provision --no-prompt
 
-      - name: Deploy apps
-        run: azd deploy --no-prompt
+      - name: Deploy the tested packages
+        run: |
+          azd deploy web --from-package packages/web.zip --no-prompt
+          azd deploy functions --from-package packages/functions.zip --no-prompt
 
       - name: Read outputs
         id: outputs
         run: echo "web_url=$(azd env get-value WEB_URL)" >> "$GITHUB_OUTPUT"
 
+      # /health is Healthy only when the database is reachable AND a fetch succeeded in the last 10 minutes,
+      # so this proves the whole chain: timer -> OpenWeatherMap -> database -> web app.
       - name: Smoke test
+        env:
+          WEB_URL: ${{ steps.outputs.outputs.web_url }}
         run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if curl --fail --silent --show-error "${{ steps.outputs.outputs.web_url }}/health"; then
-              echo; echo "Healthy after $attempt attempt(s)"; exit 0
+          for attempt in $(seq 1 20); do
+            status="$(curl --silent --show-error "$WEB_URL/health" || true)"
+            if [ "$status" = "Healthy" ]; then
+              echo "Healthy after $attempt attempt(s)"; exit 0
             fi
-            sleep 15
+            echo "Attempt $attempt: ${status:-no response}"; sleep 15
           done
-          echo "::error::${{ steps.outputs.outputs.web_url }}/health did not report Healthy"
+          echo "::error::$WEB_URL/health did not report Healthy within 5 minutes"
           exit 1
