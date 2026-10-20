@@ -34,13 +34,13 @@ var roles = {
 // Identities: one per app, so a compromise of the public web app cannot write data, read the API key or replace
 // the function's code.
 // ---------------------------------------------------------------------------------------------------------------
-resource functionIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource functionIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: 'id-func-${resourceToken}'
   location: location
   tags: tags
 }
 
-resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: 'id-web-${resourceToken}'
   location: location
   tags: tags
@@ -49,7 +49,7 @@ resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
 // ---------------------------------------------------------------------------------------------------------------
 // Monitoring
 // ---------------------------------------------------------------------------------------------------------------
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
   name: 'log-${resourceToken}'
   location: location
   tags: tags
@@ -89,7 +89,7 @@ resource alertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!em
 
 // Fires when no city has been fetched successfully for 15 minutes (expired key, broken timer, provider outage).
 // Based on the weather.fetch.attempts metric the function exports with OpenTelemetry.
-resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
+resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2026-03-01' = {
   name: 'alert-no-weather-data-${resourceToken}'
   location: location
   tags: tags
@@ -129,7 +129,7 @@ resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
 // ---------------------------------------------------------------------------------------------------------------
 // Key Vault with the OpenWeatherMap API key
 // ---------------------------------------------------------------------------------------------------------------
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+resource keyVault 'Microsoft.KeyVault/vaults@2025-05-01' = {
   name: 'kv-${resourceToken}'
   location: location
   tags: tags
@@ -148,6 +148,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // Who read the secret, and when (Key Vault audit log).
+// The only GA version (2016-09-01) has no categoryGroup ('audit'); the preview is the documented way to collect audit
+// logs by category group, so the API-age rule is suppressed here on purpose.
+#disable-next-line use-recent-api-versions
 resource keyVaultDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'audit-to-log-analytics'
   scope: keyVault
@@ -172,7 +175,7 @@ resource functionKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@20
 // Azure SQL: Entra-only authentication. The function identity is the Entra administrator so it can apply the EF Core
 // migrations on start; it then grants the web identity db_datareader (Database__ReadOnlyIdentity settings below).
 // ---------------------------------------------------------------------------------------------------------------
-resource sqlServer 'Microsoft.Sql/servers@2021-11-01' = {
+resource sqlServer 'Microsoft.Sql/servers@2025-01-01' = {
   name: 'sql-${resourceToken}'
   location: location
   tags: tags
@@ -219,11 +222,14 @@ resource sqlServer 'Microsoft.Sql/servers@2021-11-01' = {
 }
 
 // SQL audit records reach Log Analytics through a diagnostic setting on the master database.
-resource sqlMasterDatabase 'Microsoft.Sql/servers/databases@2021-11-01' existing = {
+resource sqlMasterDatabase 'Microsoft.Sql/servers/databases@2025-01-01' existing = {
   parent: sqlServer
   name: 'master'
 }
 
+// The only GA version (2016-09-01) has no categoryGroup ('audit'); the preview is the documented way to collect audit
+// logs by category group, so the API-age rule is suppressed here on purpose.
+#disable-next-line use-recent-api-versions
 resource sqlAuditDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'audit-to-log-analytics'
   scope: sqlMasterDatabase
@@ -241,7 +247,7 @@ var apiKeyReference = '@Microsoft.KeyVault(SecretUri=${keyVault::apiKey.properti
 // ---------------------------------------------------------------------------------------------------------------
 // Storage for the Functions host (timer leases) and Flex Consumption deployments; shared keys are disabled.
 // ---------------------------------------------------------------------------------------------------------------
-resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+resource storage 'Microsoft.Storage/storageAccounts@2025-06-01' = {
   name: 'st${resourceToken}'
   location: location
   tags: tags
@@ -279,7 +285,7 @@ resource functionStorageBlobOwner 'Microsoft.Authorization/roleAssignments@2022-
 // ---------------------------------------------------------------------------------------------------------------
 // Function app (Flex Consumption, .NET 10 isolated worker)
 // ---------------------------------------------------------------------------------------------------------------
-resource functionPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
+resource functionPlan 'Microsoft.Web/serverfarms@2025-03-01' = {
   name: 'plan-func-${resourceToken}'
   location: location
   tags: tags
@@ -288,7 +294,7 @@ resource functionPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   properties: { reserved: true }
 }
 
-resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
+resource functionApp 'Microsoft.Web/sites@2025-03-01' = {
   name: 'func-${resourceToken}'
   location: location
   tags: union(tags, { 'azd-service-name': 'functions' })
@@ -348,7 +354,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
 // ---------------------------------------------------------------------------------------------------------------
 // Web app (App Service, Linux): MVC API + React build in wwwroot; read-only database access
 // ---------------------------------------------------------------------------------------------------------------
-resource webPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
+resource webPlan 'Microsoft.Web/serverfarms@2025-03-01' = {
   name: 'plan-web-${resourceToken}'
   location: location
   tags: tags
@@ -357,7 +363,7 @@ resource webPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   properties: { reserved: true }
 }
 
-resource webApp 'Microsoft.Web/sites@2024-04-01' = {
+resource webApp 'Microsoft.Web/sites@2025-03-01' = {
   name: webAppName
   location: location
   tags: union(tags, { 'azd-service-name': 'web' })
@@ -393,7 +399,7 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
 }
 
 // Deployments authenticate with Entra ID (azd); username/password publishing (FTP and SCM basic auth) is disabled.
-resource basicAuthPolicies 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-04-01' = [
+resource basicAuthPolicies 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2025-03-01' = [
   for policy in [
     { site: webApp.name, name: 'ftp' }
     { site: webApp.name, name: 'scm' }

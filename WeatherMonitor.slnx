@@ -20,6 +20,7 @@
     <File Path=".github/workflows/deploy.yml" />
   </Folder>
   <Folder Name="/infra/">
+    <File Path="infra/bicepconfig.json" />
     <File Path="infra/main.bicep" />
     <File Path="infra/main.parameters.json" />
     <File Path="infra/resources.bicep" />

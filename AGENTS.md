@@ -51,7 +51,8 @@ src/
                                   vite.config.ts mirrors the server's security headers for `vite preview`.
 tests/
   WeatherMonitor.<Project>.Tests/ One test project per production project (xUnit v3, Shouldly, NSubstitute).
-infra/                            Bicep: main.bicep (resource group) + resources.bicep (everything else).
+infra/                            Bicep: main.bicep (resource group) + resources.bicep (everything else);
+                                  bicepconfig.json = strict linter rules, API versions at most two years old.
 azure.yaml                        Azure Developer CLI services: web -> App Service, functions -> Flex Consumption.
 .github/                          ci.yml (every push), deploy.yml (after green CI on main, OIDC; credential-free build
                                   job + deploy job), dependabot.yml, PR template. Actions pinned to commit SHAs.

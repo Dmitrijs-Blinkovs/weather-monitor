@@ -27,7 +27,7 @@ var tags = {
   application: 'weather-monitor'
 }
 
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
+resource resourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' = {
   name: 'rg-${environmentName}'
   location: location
   tags: tags

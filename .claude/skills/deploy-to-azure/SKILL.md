@@ -23,7 +23,10 @@ and ADRs 0011, 0012, 0015, 0016.
 2. Keep least privilege: the function identity (`id-func-*`) is the SQL admin and the only one with Key Vault and
    Storage roles; the web identity (`id-web-*`) only reads the database. Give a new permission to the one app that
    needs it. App settings use managed identities (no keys/passwords); new secrets go to Key Vault with a reference.
-3. Validate: `az bicep build --file infra/main.bicep --stdout > /dev/null` - no warnings (CI enforces this).
+3. Validate: `az bicep build --file infra/main.bicep --stdout > /dev/null` - no warnings (CI enforces this). The
+   linter rules in `infra/bicepconfig.json` are strict: unused params/vars, secrets in params or outputs, hard-coded
+   locations/URLs fail; API versions must be at most two years old (pick a recent GA version the warning lists).
+   Suppress a rule only on the line, with `#disable-next-line <rule>` and a comment that says why.
 4. Update `docs/deployment.md`, `docs/security.md` (accepted risks) and the ADR if a decision changed.
 
 ## Change the deploy workflow

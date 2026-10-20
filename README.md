@@ -23,7 +23,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 
 | Must use | How |
 |---|---|
-| Azure Function (cloud/local) | .NET 10 isolated worker, timer trigger; runs locally with Core Tools + Azurite, Azure templates for Flex Consumption in `infra/` |
+| Azure Function (cloud/local) | .NET 10 isolated worker, timer trigger; runs locally with Core Tools + Azurite, and is ready for Azure (Flex Consumption, `azd up`) - see [Azure](#azure) |
 | ASP.NET Core MVC | MVC controllers (`Controllers/`, `[ApiController]` on `ControllerBase`) with model binding and validation; the "view" layer is the React app the same ASP.NET Core app serves ([ADR 0007](docs/adr/0007-spa-hosted-by-aspnet-core.md)) |
 | C# | All backend code, .NET 10, nullable enabled, warnings as errors |
 | TypeScript, React | React 19 + TypeScript (strict) + Vite in `src/weather-monitor.client` |
@@ -36,7 +36,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Setting the environment up from scratch, by hand or with an AI assistant |
 | [docs/debugging-in-visual-studio.md](docs/debugging-in-visual-studio.md) | Running and debugging step by step in Visual Studio 2026 |
-| [docs/deployment.md](docs/deployment.md) | Deploying to Azure with `azd` and GitHub Actions (OIDC), operations, hardening options |
+| [docs/deployment.md](docs/deployment.md) | Azure: what gets created, deploying with `azd` and GitHub Actions (OIDC), operations, extending, hardening |
 | [docs/security.md](docs/security.md) | Threat model, OWASP Top 10 / API Top 10 / CI/CD Top 10 mapping, accepted risks |
 | [docs/architecture.md](docs/architecture.md) | Components, data model, flows, API, front end, configuration, testing |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records - why things are the way they are |
@@ -135,6 +135,68 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
   concurrency limit, output caching, caps on every query parameter, a 64 KB cap and plausibility checks on provider
   responses, one managed identity per app with read-only database access for the web app, and a deployment pipeline whose
   build job never sees a credential. Mapping to the OWASP Top 10 lists: [docs/security.md](docs/security.md).
+
+## Azure
+
+**Deployment-ready, not deployed.** The assignment allows the function to run locally, and that is how this submission
+runs. Everything needed for Azure is in the repository and checked by CI on every push; one `azd up` creates and deploys
+the whole environment. Details, operations and hardening: [docs/deployment.md](docs/deployment.md).
+
+```mermaid
+flowchart LR
+    subgraph rg["Resource group (one per azd environment)"]
+        FA["Function app<br/>Flex Consumption<br/>FetchWeather, PurgeOldData"]
+        WA["App Service (Linux)<br/>MVC API + React"]
+        SQL[("Azure SQL<br/>Entra-only auth")]
+        KV["Key Vault<br/>API key"]
+        ST[("Storage<br/>no shared keys")]
+        AI["Application Insights<br/>Log Analytics, alert"]
+        IDF(["identity id-func"])
+        IDW(["identity id-web"])
+    end
+    OWM[(OpenWeatherMap)]
+    GH["GitHub Actions<br/>OIDC, no secrets"]
+    FA -.-> IDF
+    WA -.-> IDW
+    IDF -- "admin: migrations" --> SQL
+    IDW -- "db_datareader" --> SQL
+    IDF -- "Secrets User" --> KV
+    IDF -- "Blob Data Owner" --> ST
+    FA -- HTTPS --> OWM
+    FA -- OpenTelemetry --> AI
+    WA -- OpenTelemetry --> AI
+    GH -- "azd provision + deploy" --> rg
+```
+
+| Area | What is in place | Read |
+|---|---|---|
+| Hosting | Functions on **Flex Consumption** (.NET 10 isolated, scale to zero), Web on **App Service Linux**, **Azure SQL** Basic; about 19 USD/month | [ADR 0011](docs/adr/0011-azure-hosting-and-identity.md) |
+| Identity and secrets | No password or key anywhere: **one managed identity per app** with least privilege (the web app can only read the database), **Entra-only SQL**, the API key as a **Key Vault reference**, identity-based Storage with shared keys disabled | [ADR 0015](docs/adr/0015-least-privilege-identities.md) |
+| Infrastructure as code | **Bicep + Azure Developer CLI**, strict linter rules ([bicepconfig.json](infra/bicepconfig.json)) and current API versions, compiled in CI | [infra/](infra), [azure.yaml](azure.yaml) |
+| Delivery | GitHub Actions with **OpenID Connect**: a build job without credentials, a deploy job behind the protected `production` environment, only CI-green pushes to `main`, a `/health` smoke test | [ADR 0012](docs/adr/0012-ci-cd-with-github-actions.md) |
+| Observability | **OpenTelemetry** to Application Insights (logs, traces, metrics), ingestion metrics, a data-freshness health check, an **alert** after 15 minutes without data | [ADR 0016](docs/adr/0016-observability.md) |
+| Security | HTTPS and TLS 1.3, FTP and basic-auth publishing off, the function closed to inbound traffic, Key Vault and SQL audit logs; private endpoints, purge protection and Defender listed as next steps | [docs/security.md](docs/security.md) |
+
+**Checked without a subscription:** the templates compile with the strict linter (CI); every migration is applied, rolled
+back and re-applied on SQL Server 2022 (CI); both hosts' telemetry export was checked against a local fake Application
+Insights endpoint; the read-only database grant (T-SQL) was syntax-checked on SQL Server.
+
+**From zero to running** (Owner on a subscription; the key is set by you, never committed):
+
+```bash
+azd auth login
+azd env new weather-prod
+azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
+azd env set AZURE_LOCATION northeurope
+azd env set OPENWEATHERMAP_API_KEY <your-api-key>
+azd up
+```
+
+**Extending it:** a staging environment is `azd env new weather-staging`; continuous deployment is `azd pipeline config`
+plus the steps in [docs/deployment.md](docs/deployment.md#continuous-deployment-from-github); more cities are app settings
+(`Weather__Cities__3__Name`, `...__CountryCode`); a new secret is a Key Vault secret, a reference and a role for the one
+identity that needs it; private networking, alerts and scaling are listed under
+[Extending in Azure](docs/deployment.md#extending-in-azure).
 
 ## Running locally
 

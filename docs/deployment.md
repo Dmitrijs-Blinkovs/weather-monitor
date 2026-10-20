@@ -1,8 +1,10 @@
 # Deploying to Azure
 
-Status: the infrastructure templates (`infra/`), the azd definition (`azure.yaml`) and the deployment workflow
-(`.github/workflows/deploy.yml`) are ready and compile, but nothing has been deployed yet. The first deployment is a
-deliberate, manual step.
+Status: deployment-ready, not deployed. The infrastructure templates (`infra/`), the azd definition (`azure.yaml`) and
+the deployment workflow (`.github/workflows/deploy.yml`) are complete and checked in CI: Bicep compiles with strict
+linter rules (`infra/bicepconfig.json`) and the migrations run on SQL Server 2022. Telemetry export was checked against
+a local fake Application Insights endpoint. The first deployment is a deliberate, manual step. The topology diagram is
+in the [README](../README.md#azure).
 
 ## What gets created
 
@@ -158,8 +160,27 @@ Accepted for this size, recommended for a long-lived production environment (see
 | `DisableLocalAuth` on Application Insights + Monitoring Metrics Publisher role | telemetry accepted only with Entra tokens | free |
 | Microsoft Defender for SQL / App Service | threat detection, vulnerability assessment | paid |
 
+## Extending in Azure
+
+The templates are one Bicep file per scope and every app setting is plain configuration, so most extensions are a few
+lines in `infra/resources.bicep` or an app setting:
+
+| Need | How | Where |
+|---|---|---|
+| A second environment (staging, previews) | `azd env new weather-staging` creates its own resource group; for GitHub add a `staging` environment with its own federated credential (`...:environment:staging`) and a deploy job that targets it | `azure.yaml`, `deploy.yml` |
+| Zero-downtime web releases | A `staging` deployment slot on the web app (Standard plan or higher), smoke-tested and then swapped | web app in `resources.bicep` |
+| More cities | App settings `Weather__Cities__3__Name` / `__CountryCode` add a city (arrays merge by index), or change `appsettings.json` and redeploy | `.claude/skills/manage-cities` |
+| A new secret | A Key Vault secret, an `@Microsoft.KeyVault(SecretUri=...)` app setting, and `Key Vault Secrets User` for the one identity that reads it | `resources.bicep` |
+| Private networking | A VNet with integration subnets for both apps, private endpoints and private DNS zones for SQL, Key Vault and Storage, `publicNetworkAccess: 'Disabled'` | [Hardening options](#hardening-options) |
+| Sign-in for the UI and API | App Service built-in authentication with Entra ID (`authsettingsV2`), or `Microsoft.Identity.Web` in code | web app in `resources.bicep` |
+| More alerts | Scheduled query or metric alerts next to `noWeatherDataAlert`: failed invocations, HTTP 5xx rate, SQL DTU | `resources.bicep` |
+| Scale | Flex `maximumInstanceCount` / `instanceMemoryMB`, the App Service plan SKU and instance count, the SQL tier | `resources.bicep`, `main.parameters.json` |
+| Another weather provider | A new `IWeatherProvider` adapter with its options in Infrastructure; Bicep changes only for its secret | `AGENTS.md`, ADR 0001 |
+| Migrations from the pipeline | `dotnet ef migrations bundle` in the build job, run by the deploy job with an Entra admin group; the function then needs no admin rights | ADR 0015 |
+
 ## Known limits
 
 - F1 web tier unloads after 20 idle minutes; the first request afterwards is slow, and there is no health probe.
 - Migrations run on start (EF Core takes a lock); for larger teams prefer migration bundles in the pipeline.
-- One environment (`production`); a staging slot or a second azd environment would allow testing before production.
+- One environment (`production`); a second azd environment or a slot would allow testing before production
+  ([Extending in Azure](#extending-in-azure)).
