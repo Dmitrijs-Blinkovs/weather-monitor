@@ -150,12 +150,16 @@ jobs:
 
       - run: dotnet tool restore
 
+      # dotnet ef does not restore a fresh checkout (NETSDK1004: project.assets.json not found); build once instead.
+      - name: Build the migrations project
+        run: dotnet build src/WeatherMonitor.Infrastructure
+
       # The unit tests build the schema from the model on SQLite; this runs the real migrations on SQL Server,
-      # including the SQL Server-only parts (INCLUDE columns), then rolls everything back and applies it again.
+      # including the SQL Server-only parts (INCLUDE columns, char(2)), then rolls everything back and applies it again.
       - name: Apply, roll back and re-apply all migrations
         run: |
           connection="Server=localhost,1433;Database=WeatherMonitorCi;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True"
-          ef() { dotnet ef database update "$@" --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --connection "$connection"; }
+          ef() { dotnet ef database update "$@" --no-build --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --connection "$connection"; }
           ef
           ef 0
           ef

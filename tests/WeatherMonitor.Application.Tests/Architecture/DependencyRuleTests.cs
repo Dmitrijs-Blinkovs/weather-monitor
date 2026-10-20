@@ -11,7 +11,10 @@ public sealed class DependencyRuleTests
     {
         var references = typeof(FetchAttempt).Assembly.GetReferencedAssemblies().Select(assembly => assembly.Name!).ToList();
 
-        references.ShouldAllBe(name => name.StartsWith("System", StringComparison.Ordinal));
+        // The BCL is System.* plus its netstandard and mscorlib facades; code-coverage instrumentation on Linux adds a
+        // reference to netstandard (CI runs the tests with --coverage).
+        references.ShouldAllBe(name =>
+            name.StartsWith("System", StringComparison.Ordinal) || name == "netstandard" || name == "mscorlib");
     }
 
     [Fact]
