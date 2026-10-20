@@ -118,6 +118,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - New package: add `<PackageVersion>` to `Directory.Packages.props`, then a version-less `<PackageReference>`.
   High/critical NuGet advisories (also transitive) fail the build; pin a fixed transitive version there if needed.
 - Never put secrets in files under source control. The OpenWeatherMap key lives in user secrets locally.
+  `<UserSecretsId>` in a `.csproj` is only the name of that local folder (`weather-monitor-functions-…`,
+  `weather-monitor-web-…`), not a secret; keep the readable names.
 
 **Tests**
 - Name tests as sentences (`A_failed_city_is_logged_as_a_failure_while_the_others_are_still_stored`).

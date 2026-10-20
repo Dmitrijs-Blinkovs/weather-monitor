@@ -59,6 +59,11 @@ Stop the background processes you started (Web stops Vite with it). Leave proces
 
 ## Gotchas
 
+- Data stops arriving while the Web host runs: only the Web project was started. In Visual Studio pick the
+  **Web + Functions** profile; from the CLI start Azurite and the Functions host too.
+- `SQL Server process failed to start`, or `MSSQLLocalDB` is shared with projects you must not touch: give this
+  project its own instance (`sqllocaldb create WeatherMonitor -s`) and set `ConnectionStrings:WeatherDb` in user
+  secrets of both hosts (`docs/getting-started.md`, Troubleshooting). Never restart or repair a shared instance.
 - A new API key answers 401 for up to ~2 hours; failures then appear in the fetch log, which is correct behaviour.
 - Typing a deep link on port 5180 returns 404 in development; navigate from `/` or use port 5173.
 - The chart gets a new point only when the provider updates an observation (~every 10 minutes).
