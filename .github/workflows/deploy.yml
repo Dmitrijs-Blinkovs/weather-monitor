@@ -88,7 +88,7 @@ jobs:
       WEB_SKU_NAME: ${{ vars.WEB_SKU_NAME || 'B1' }}
       ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
     steps:
-      # Only the templates and azure.yaml are needed here; nothing is built in this job.
+      # Only the templates, azure.yaml, the smoke test and the shipped city list are needed here; nothing is built.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
@@ -121,7 +121,10 @@ jobs:
           OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
         run: azd provision --no-prompt
 
-      - name: Deploy the tested packages
+      - name: Record the deployment start
+        run: echo "DEPLOY_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Deploy the packages built from this commit
         run: |
           azd deploy web --from-package packages/web.zip --no-prompt
           azd deploy functions --from-package packages/functions.zip --no-prompt
@@ -130,18 +133,10 @@ jobs:
         id: outputs
         run: echo "web_url=$(azd env get-value WEB_URL)" >> "$GITHUB_OUTPUT"
 
-      # /health is Healthy only when the database is reachable AND a fetch succeeded in the last 10 minutes,
-      # so this proves the whole chain: timer -> OpenWeatherMap -> database -> web app.
+      # Healthy (database reachable, every city fresh) AND a successful fetch of every shipped city after the
+      # deployment started: proves the new release's chain timer -> OpenWeatherMap -> database -> web app, not the
+      # previous release's data.
       - name: Smoke test
         env:
           WEB_URL: ${{ steps.outputs.outputs.web_url }}
-        run: |
-          for attempt in $(seq 1 20); do
-            status="$(curl --silent --show-error "$WEB_URL/health" || true)"
-            if [ "$status" = "Healthy" ]; then
-              echo "Healthy after $attempt attempt(s)"; exit 0
-            fi
-            echo "Attempt $attempt: ${status:-no response}"; sleep 15
-          done
-          echo "::error::$WEB_URL/health did not report Healthy within 5 minutes"
-          exit 1
+        run: python3 .github/scripts/smoke_test.py "$WEB_URL" "$DEPLOY_STARTED_AT" src/WeatherMonitor.Functions/appsettings.json

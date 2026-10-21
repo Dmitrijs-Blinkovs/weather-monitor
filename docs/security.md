@@ -31,7 +31,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | A06 Vulnerable and outdated components | OK | NuGet Audit (direct + transitive) fails the build on high/critical; `npm audit --omit=dev --audit-level=high` in CI; Dependabot weekly with a 3-day cooldown. |
 | A07 Identification and authentication failures | n/a / OK | No user accounts; services authenticate with managed identities (no stored credentials). |
 | A08 Software and data integrity failures | OK | Lockfile + `npm ci`, CPM, actions pinned to commit SHAs, checkout without persisted credentials, OIDC deployments, build job without credentials, environment approval. |
-| A09 Logging and monitoring failures | OK | Every fetch attempt stored; OpenTelemetry traces/metrics/logs to Application Insights; Key Vault and SQL audit logs; data-freshness health check; alert on 15 minutes without data (ADR 0016). |
+| A09 Logging and monitoring failures | OK | Every fetch attempt stored; OpenTelemetry traces/metrics/logs to Application Insights; Key Vault and SQL audit logs; per-city data-freshness health check; alert when a city has had no successful fetch for 15 minutes (ADR 0016). |
 | A10 Server-side request forgery | OK | The only outbound call goes to the configured https base URL; user input never reaches it; city names are URL-encoded. |
 
 ## OWASP API Security Top 10 (2023)

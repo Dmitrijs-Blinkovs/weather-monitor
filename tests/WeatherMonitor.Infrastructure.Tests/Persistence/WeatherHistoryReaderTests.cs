@@ -38,6 +38,22 @@ public sealed class WeatherHistoryReaderTests : SqliteTestDatabase
     }
 
     [Fact]
+    public async Task Each_version_of_an_observation_carries_the_id_of_its_newest_snapshot()
+    {
+        var observedAt = Now.AddMinutes(-30);
+        await SeedAsync(Success("Rome", Now.AddMinutes(-3), temperature: 18, observedAtUtc: observedAt));
+        await SeedAsync(Success("Rome", Now.AddMinutes(-2), temperature: 19, observedAtUtc: observedAt));
+        await SeedAsync(Success("Rome", Now.AddMinutes(-1), temperature: 18, observedAtUtc: observedAt));
+
+        var observations = await ReadAsync();
+
+        observations.Count.ShouldBe(2);
+        var reported = observations.Single(observation => observation.Temperature == 18);
+        var revised = observations.Single(observation => observation.Temperature == 19);
+        reported.LatestSnapshotId.ShouldBeGreaterThan(revised.LatestSnapshotId);
+    }
+
+    [Fact]
     public async Task Failed_attempts_have_no_observations()
     {
         await SeedAsync(Failure("Rome", Now.AddMinutes(-1)));

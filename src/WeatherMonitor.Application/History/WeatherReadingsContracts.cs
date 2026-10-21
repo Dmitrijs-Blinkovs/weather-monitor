@@ -40,7 +40,9 @@ public sealed record WeatherReadingsQuery
 
 /// <summary>The weather one successful fetch returned.</summary>
 /// <param name="Id">Id of the fetch attempt, as in the fetch log.</param>
-/// <param name="FetchedAtUtc">When the function received the response.</param>
+/// <param name="FetchedAtUtc">
+/// When the fetch was made: the attempt's start; the response arrived within the attempt's duration.
+/// </param>
 /// <param name="ObservedAtUtc">
 /// The provider's "last update" time of the observation; it repeats until the provider refreshes the observation.
 /// </param>

@@ -2,7 +2,8 @@ import type { TemperaturePoint } from '../../api/types';
 
 /**
  * Reduces a series to at most `threshold` points with Largest-Triangle-Three-Buckets: it keeps the first and last
- * point and, per bucket, the point that best preserves the line's visual shape (peaks and dips survive).
+ * point and, per bucket, the point that best preserves the line's visual shape (peaks and dips survive). The min/max
+ * band of that point spans the whole bucket, so a band extreme survives even where the temperature line is flat.
  * A chart is only a few hundred pixels wide, so drawing 4,000+ points per city for a month adds work, not detail.
  */
 export function downsample(points: readonly TemperaturePoint[], threshold: number): TemperaturePoint[] {
@@ -34,8 +35,12 @@ export function downsample(points: readonly TemperaturePoint[], threshold: numbe
 
     let best = points[start]!;
     let bestArea = -1;
+    let bucketMin = Infinity;
+    let bucketMax = -Infinity;
     for (let i = start; i < end; i++) {
       const candidate = points[i]!;
+      bucketMin = Math.min(bucketMin, candidate.temperatureMin);
+      bucketMax = Math.max(bucketMax, candidate.temperatureMax);
       const area = Math.abs(
         (x(previous) - averageX) * (candidate.temperature - previous.temperature) -
           (x(previous) - x(candidate)) * (averageY - previous.temperature),
@@ -46,7 +51,7 @@ export function downsample(points: readonly TemperaturePoint[], threshold: numbe
       }
     }
 
-    sampled.push(best);
+    sampled.push({ ...best, temperatureMin: bucketMin, temperatureMax: bucketMax });
     previous = best;
   }
 

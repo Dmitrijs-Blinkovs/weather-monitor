@@ -42,6 +42,7 @@ public sealed class WeatherSnapshot
     /// <summary>Time the provider last updated the observation ("last update time").</summary>
     public DateTime ObservedAtUtc { get; private set; }
 
+    /// <summary>When the fetch was made: the attempt's start time (the response arrived within its duration).</summary>
     public DateTime FetchedAtUtc { get; private set; }
 
     /// <summary>Full JSON payload returned by the provider.</summary>

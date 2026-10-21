@@ -67,7 +67,7 @@ export interface WeatherHistory {
 export interface WeatherReading {
   /** Id of the fetch attempt, as in the fetch log. */
   id: number;
-  /** When the function received the response. */
+  /** When the fetch was made (the attempt's start; the response arrived within its duration). */
   fetchedAtUtc: string;
   city: string;
   country: string;

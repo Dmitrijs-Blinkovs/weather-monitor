@@ -18,7 +18,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 197 .NET tests (xUnit v3), 66 front-end unit/component tests (Vitest), 21 browser tests (Playwright) |
+| Unit tests | 210 .NET tests (xUnit v3), 67 front-end unit/component tests (Vitest), 22 browser tests (Playwright) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -110,9 +110,9 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
   country code and is requested as `q=Rome,IT`. The plain name ("Rome") is what the log and the chart show.
 - **Resilience.** `Microsoft.Extensions.Http.Resilience` adds retries, a circuit breaker and timeouts (10 s per attempt,
   30 s in total per city); the Functions `functionTimeout` of 55 s bounds a whole run below the one-minute schedule.
-- **The API key never leaks.** It is sent in the query string, so the default `HttpClient` request logging (which writes
-  URIs) is removed for this client, provider error messages are redacted, and unexpected exception texts are logged but
-  never stored.
+- **The API key stays out of logs and stored data.** It has to travel in the query string, so the default `HttpClient`
+  request logging (which writes URIs) is removed for this client, provider error messages and stored error bodies are
+  redacted, and unexpected exception texts are logged but never stored.
 - **One minute vs. ten minutes.** OpenWeatherMap refreshes an observation roughly every 10 minutes, so most minutes return
   the same observation again. Every fetch is stored (as required), and the chart shows each real observation once,
   keyed by its observation time (`dt`) - which is the "last update time" shown in the UI.
@@ -131,8 +131,8 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
   [ADR 0014](docs/adr/0014-data-retention.md)); without it the database would grow by ~8,600 rows a day forever.
 - **Observable, including "silent" failures.** Expected failures are values, so a run in which every city fails is still
   a successful invocation. OpenTelemetry metrics (`weather.fetch.attempts` per city and outcome), traces of every run, a
-  `/health` check that turns `Degraded` without a successful fetch in 10 minutes, and an Azure alert after 15 minutes
-  without data make that visible ([ADR 0016](docs/adr/0016-observability.md)).
+  `/health` check that turns `Degraded` when any city has had no successful fetch for 10 minutes, and an Azure alert when a
+  city (or every city) has had none for 15 minutes make that visible ([ADR 0016](docs/adr/0016-observability.md)).
 - **Secure by default.** Strict CSP and security headers on every response, HSTS, per-client rate limiting plus a global
   concurrency limit, output caching, caps on every query parameter, a 64 KB cap and plausibility checks on provider
   responses, one managed identity per app with read-only database access for the web app, and a deployment pipeline whose
@@ -140,9 +140,10 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
 
 ## Azure
 
-**Deployment-ready, not deployed.** The assignment allows the function to run locally, and that is how this submission
-runs. Everything needed for Azure is in the repository and checked by CI on every push; one `azd up` creates and deploys
-the whole environment. Details, operations and hardening: [docs/deployment.md](docs/deployment.md).
+**Prepared for Azure, not deployed.** The assignment allows the function to run locally, and that is how this submission
+runs. The templates, the azd definition and the deployment workflow are in the repository and the templates are
+compiled and linted by CI on every push; one `azd up` is designed to create and deploy the whole environment, but it
+has not been run against a subscription yet. Details, operations and hardening: [docs/deployment.md](docs/deployment.md).
 
 ```mermaid
 flowchart LR
@@ -176,8 +177,8 @@ flowchart LR
 | Hosting | Functions on **Flex Consumption** (.NET 10 isolated, scale to zero), Web on **App Service Linux**, **Azure SQL** Basic; about 19 USD/month | [ADR 0011](docs/adr/0011-azure-hosting-and-identity.md) |
 | Identity and secrets | No password or key anywhere: **one managed identity per app** with least privilege (the web app can only read the database), **Entra-only SQL**, the API key as a **Key Vault reference**, identity-based Storage with shared keys disabled | [ADR 0015](docs/adr/0015-least-privilege-identities.md) |
 | Infrastructure as code | **Bicep + Azure Developer CLI**, strict linter rules ([bicepconfig.json](infra/bicepconfig.json)) and current API versions, compiled in CI | [infra/](infra), [azure.yaml](azure.yaml) |
-| Delivery | GitHub Actions with **OpenID Connect**: a build job without credentials, a deploy job in the `production` environment (where the approval rule is set), only CI-green pushes to `main`, a `/health` smoke test | [ADR 0012](docs/adr/0012-ci-cd-with-github-actions.md) |
-| Observability | **OpenTelemetry** to Application Insights (logs, traces, metrics), ingestion metrics, a data-freshness health check, an **alert** after 15 minutes without data | [ADR 0016](docs/adr/0016-observability.md) |
+| Delivery | GitHub Actions with **OpenID Connect**: a build job without credentials, a deploy job in the `production` environment (where the approval rule is set), only CI-green pushes to `main`, a smoke test that waits for new fetches of every city | [ADR 0012](docs/adr/0012-ci-cd-with-github-actions.md) |
+| Observability | **OpenTelemetry** to Application Insights (logs, traces, metrics), ingestion metrics, a per-city data-freshness health check, an **alert** when a city has had no successful fetch for 15 minutes | [ADR 0016](docs/adr/0016-observability.md) |
 | Security | HTTPS only (TLS 1.3 on the web app, 1.2 on the function), FTP and basic-auth publishing off, the function closed to inbound traffic, Key Vault and SQL audit logs; private endpoints, purge protection and Defender listed as next steps | [docs/security.md](docs/security.md) |
 
 **Checked without a subscription, in CI on every push:** the templates compile with the strict linter, and every
@@ -285,7 +286,8 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
   browser tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
 - **CD** ([deploy.yml](.github/workflows/deploy.yml)) after a green CI run on `main` once Azure is configured: a build job
   without credentials packages both apps; the deploy job (OpenID Connect, `production` environment, which is where required reviewers are configured)
-  provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` - see
+  provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` and every city to have a
+  successful fetch after the deployment started ([smoke_test.py](.github/scripts/smoke_test.py)) - see
   [docs/deployment.md](docs/deployment.md).
 - **Supply chain:** actions pinned to commit SHAs, lockfiles and central package versions, Dependabot for NuGet, npm and
   GitHub Actions with a 3-day cooldown.
@@ -300,7 +302,7 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 | `GET /api/weather/readings?from=2026-10-19T11:00:00Z&to=2026-10-19T12:00:00Z&page=1&pageSize=60` | Every successful fetch in the range, newest first: fetch time, city, country, temperature, min/max and the provider's last update time. Range up to 31 days, `page` 1-1,000, `pageSize` 1-200. |
 | `GET /api/cities` | Cities that have been fetched at least once. |
 | `GET /health/live` | Liveness: the process answers (`Healthy`). Used by the App Service health probe. |
-| `GET /health` | Readiness: database reachable and a successful fetch within 10 minutes (`Healthy`), `Degraded` without recent data, `503 Unhealthy` without a database. |
+| `GET /health` | Readiness: database reachable and, for every city fetched in the last day, a successful fetch within 10 minutes (`Healthy`); `Degraded` names the cities without one; `503 Unhealthy` without a database. |
 
 Invalid queries return `400` with an RFC 7807 `application/problem+json` body; unknown API routes return `404`, a wrong
 HTTP method `405`, more than `RateLimiting:PermitsPerMinute` requests per client `429` with `Retry-After`. Responses are

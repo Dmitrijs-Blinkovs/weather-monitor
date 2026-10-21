@@ -109,7 +109,8 @@ IX (IsSuccess, AttemptedAtUtc)
 
 - The full payload is the response body exactly as received: `WeatherSnapshots.RawPayload` for a success,
   `FetchAttempts.ResponseBody` for a failure that had a body (the API key is redacted first, because an error page of a
-  proxy may echo the request URL). Neither is ever returned by the API. `nvarchar` because payloads contain non-ASCII
+  proxy may echo the request URL). No list returns them; only `GET /api/logs/{id}` returns the body of that one
+  attempt (public weather data, rendered as text in the UI). `nvarchar` because payloads contain non-ASCII
   text (OpenWeatherMap returns local city names with diacritics).
 - Every fetch is stored (one row per city per minute), as the assignment requires: ~4,300 attempts and ~4,300
   snapshots per day for three cities.
@@ -151,7 +152,7 @@ Failure handling:
 | Response larger than 64 KB, network error | failed attempt "Request failed: ...", API key redacted |
 | Timeout / circuit open (resilience pipeline) | failed attempt, no status code |
 | Unexpected exception in the provider | caught by the service, failed attempt "Unexpected error (Type)"; the exception text is only logged |
-| Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved with a short separate timeout, then the cancellation is reported to the runtime |
+| Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved within a 10 s budget of their own that the host's cancellation does not interrupt (also when it arrives during the save), then the cancellation is reported to the runtime; no retry, so an uncertain commit cannot store a run twice |
 | Database unavailable or rejects the data (full, schema mismatch) | SQL retries transient errors (3 times, at most 5 s apart); then an error log "Storing N fetch attempts failed", the invocation fails (the runtime logs it too) and the next minute retries. The attempts are not counted in the metrics, so the "no weather data" alert fires |
 | `dt` outside the DateTime range | failed attempt "Observation time out of range" (checked before the domain sees it) |
 
@@ -177,7 +178,7 @@ small and never block the minute-by-minute inserts for long ([ADR 0014](adr/0014
 | `GET /api/weather/history?from&to` | `WeatherController` -> `IWeatherHistoryService` | ISO 8601 with offset; `from < to`; range <= 31 days; cached 60 s, varied by query |
 | `GET /api/weather/readings?from&to&page&pageSize` | `WeatherController` -> `IWeatherReadingsReader.GetPageAsync` | every successful fetch, newest first; range as for history; `page` 1-1,000; `pageSize` 1-200 (default 50); cached 10 s |
 | `GET /health/live` | health checks (none) | liveness: the process answers; App Service probe; not subject to the per-client rate limit |
-| `GET /health` | health checks tagged `ready` | database reachable (`Unhealthy`/503 otherwise) and a successful fetch within 10 minutes (`Degraded` otherwise) |
+| `GET /health` | health checks tagged `ready` | database reachable (`Unhealthy`/503 otherwise) and, for every city attempted in the last day, a successful fetch within 10 minutes (`Degraded` naming the others) |
 | `GET /openapi/v1.json` | OpenAPI (development only) | titled "Weather Monitor API"; endpoint descriptions from the controllers' XML comments |
 | `GET /scalar` | Scalar API reference (development only) | reads `/openapi/v1.json`; its own CSP allows inline code under this path only, no Scalar cloud features or telemetry |
 | `GET/HEAD /api/*` (unknown) | minimal endpoint | `404` problem details - never the SPA; a wrong verb on a known route gets `405` |
@@ -238,7 +239,7 @@ src/
   data stays visible (dimmed) while a new filter loads.
 - **Chart:** Recharts `ComposedChart`. Series are merged into one row per observation time (`toChartRows`); lines
   bridge gaps with `connectNulls`. Each city is downsampled to at most 600 points (largest-triangle-three-buckets keeps
-  peaks and troughs), so a 31-day range stays fast; the tooltip still uses every observation. The tooltip shows, for
+  peaks and troughs of the line, and each kept point's min/max band spans its whole bucket, so band extremes survive), so a 31-day range stays fast; the tooltip still uses every observation. The tooltip shows, for
   every city, the observation that was current at the hovered time (`pointAt`, binary search). Legend, tooltip
   rows and city cards all keep the API's alphabetical city order. Ticks are spread over the
   whole selected range (`timeTicks`). The min/max band can be hidden. "Show as table" lists every reading
@@ -276,9 +277,11 @@ src/
 - **Metrics** (meter `WeatherMonitor.Ingestion`), recorded once the attempts are stored: `weather.fetch.attempts`
   (counter) and `weather.fetch.duration`
   (histogram, ms), both tagged `city` and `outcome` (`success` / `failure`).
-- **Health:** `/health/live` and `/health` (section 7). `DataFreshnessHealthCheck` reports `Degraded` when the newest
-  successful attempt is older than 10 minutes - the case where every invocation "succeeds" but no data arrives.
-- **Alert** (Azure): no `success` in the metric for 15 minutes.
+- **Health:** `/health/live` and `/health` (section 7). `DataFreshnessHealthCheck` reports `Degraded` when a city attempted
+  in the last day has no successful attempt in the last 10 minutes (or nothing was stored for a day) - the case where
+  every invocation "succeeds" but data stops arriving, for one city or for all. A city removed from the configuration
+  stops counting a day after its last attempt.
+- **Alert** (Azure): a city whose attempts in the metric had no `success` for 15 minutes, or no success at all.
 - **Logs:** `[LoggerMessage]` source-generated; the OpenWeatherMap `HttpClient` has no default loggers (they would write
   the URL with the API key).
 

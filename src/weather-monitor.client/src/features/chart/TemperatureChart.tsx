@@ -98,7 +98,8 @@ export function TemperatureChart({ history, allCities, showMinMax }: Temperature
               name={`${city.city}, ${city.country}`}
               stroke={colors[index]}
               strokeWidth={2}
-              dot={false}
+              // A line needs two observations; until the second arrives, the first is shown as a point.
+              dot={city.points.length === 1 ? { r: 4, fill: colors[index], stroke: 'var(--surface)', strokeWidth: 2 } : false}
               activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--surface)' }}
               connectNulls
               isAnimationActive={false}

@@ -25,6 +25,6 @@ city (or a transient outage) must not hide the others.
 
 ## Alternatives considered
 
-- Exceptions for HTTP failures: forces every caller to know provider-specific exceptions (violates LSP) and makes
-  partial success awkward.
+- Exceptions for HTTP failures: callers would have to know each implementation's exceptions, which the interface
+  does not describe (so implementations would not be interchangeable), and partial success becomes awkward.
 - Saving each city separately: partial runs on crash, three round trips instead of one.

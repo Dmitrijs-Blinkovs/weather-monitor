@@ -18,8 +18,8 @@ OpenWeatherMap calls from the function.
   HttpClient instrumentation redacts query-string values, so the API key never reaches telemetry.
 - **Metrics** (`WeatherMonitor.Ingestion` meter): `weather.fetch.attempts{city,outcome}` and `weather.fetch.duration`.
 - **Health checks:** `/health/live` (process only; App Service health probe) and `/health` (database reachable and a
-  successful fetch within 10 minutes - Degraded otherwise). The deployment smoke test requires `Healthy`, which proves
-  the whole chain timer -> provider -> database -> web.
+  successful fetch within 10 minutes - Degraded otherwise). The deployment smoke test requires `Healthy` and a successful fetch
+  of every city after the deployment started, which proves the new release's chain timer -> provider -> database -> web.
 - **Alert** (Bicep): a scheduled log query on the metric fires when no success was recorded for 15 minutes; e-mail via an
   optional action group (`ALERT_EMAIL`).
 
@@ -36,6 +36,13 @@ OpenWeatherMap calls from the function.
 - `weather.fetch.attempts` and `weather.fetch.duration` are recorded only after the run is stored. When the database
   rejects the writes (down, full, schema mismatch), no success is counted, so the alert fires; the service also logs
   "Storing N fetch attempts failed" as an error before the invocation fails.
+
+## Amendment (2026-10-21): per city
+
+- An independent review found that one working city kept `/health` `Healthy` and the alert quiet while the others
+  failed. `/health` now checks every city attempted in the last day (`Degraded` names those without a success in
+  10 minutes), and the alert query adds a row per city without a success in its window besides the "nothing at all"
+  row. The KQL compiles as part of the Bicep but has not run against a real workspace yet.
 
 ## Alternatives considered
 

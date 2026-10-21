@@ -40,6 +40,19 @@ describe('downsample', () => {
     expect(sampled.some((point) => point.temperature === 35)).toBe(true);
   });
 
+  it('keeps the extremes of the min/max band even when the temperature line does not move', () => {
+    const points = series(1_200, () => 10).map((point, index) =>
+      index === 777 ? { ...point, temperatureMax: 40 } : index === 321 ? { ...point, temperatureMin: -20 } : point,
+    );
+
+    const sampled = downsample(points, 600);
+
+    expect(sampled).toHaveLength(600);
+    expect(Math.max(...sampled.map((point) => point.temperatureMax))).toBe(40);
+    expect(Math.min(...sampled.map((point) => point.temperatureMin))).toBe(-20);
+    expect(sampled.every((point) => point.temperature === 10)).toBe(true);
+  });
+
   it('keeps points in time order', () => {
     const sampled = downsample(series(2_000, (i) => (i % 7) - 3), 300);
 

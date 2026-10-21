@@ -24,6 +24,7 @@ internal static class TestData
         double temperature,
         double? min = null,
         double? max = null,
-        string country = "GB") =>
-        new(city, country, temperature, min ?? temperature - 1, max ?? temperature + 1, observedAtUtc);
+        string country = "GB",
+        long latestSnapshotId = 1) =>
+        new(city, country, temperature, min ?? temperature - 1, max ?? temperature + 1, observedAtUtc, latestSnapshotId);
 }

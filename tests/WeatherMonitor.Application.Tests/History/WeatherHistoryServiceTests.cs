@@ -57,6 +57,23 @@ public sealed class WeatherHistoryServiceTests
         riga.Points.Select(point => point.ObservedAtUtc).ShouldBe([observedAt, To.AddMinutes(-10)]);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_revised_observation_shows_the_version_stored_last_whatever_the_read_order(bool newestFirst)
+    {
+        var observedAt = To.AddMinutes(-10);
+        var first = TestData.Observation("Riga", observedAt, 10, latestSnapshotId: 7);
+        var revised = TestData.Observation("Riga", observedAt, 20, latestSnapshotId: 9);
+        Returns(newestFirst ? new[] { revised, first } : new[] { first, revised });
+
+        var riga = (await CreateService().GetHistoryAsync(From, To, TestContext.Current.CancellationToken)).Cities.Single();
+
+        riga.LatestTemperature.ShouldBe(20);
+        riga.Points.ShouldHaveSingleItem().Temperature.ShouldBe(20);
+        riga.MaxTemperature.ShouldBe(21);
+    }
+
     [Fact]
     public async Task Returns_no_series_when_the_period_has_no_data()
     {

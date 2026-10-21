@@ -1,13 +1,18 @@
 namespace WeatherMonitor.Application.History;
 
 /// <summary>One distinct weather observation, as read from storage.</summary>
+/// <param name="LatestSnapshotId">
+/// Id of the newest snapshot that stored these values. Ids grow with every insert, so when the provider revised an
+/// observation without changing its time, the version with the higher id is the one it reported last.
+/// </param>
 public sealed record WeatherObservation(
     string City,
     string Country,
     double Temperature,
     double TemperatureMin,
     double TemperatureMax,
-    DateTime ObservedAtUtc);
+    DateTime ObservedAtUtc,
+    long LatestSnapshotId);
 
 public sealed record TemperaturePointDto(
     DateTime ObservedAtUtc,

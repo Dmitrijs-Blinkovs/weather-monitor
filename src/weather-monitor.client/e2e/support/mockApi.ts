@@ -11,6 +11,8 @@ const TEN_MINUTES = 10 * 60 * 1000;
 interface MockOptions {
   /** Status code to answer every /api/logs call with (e.g. 500); omitted = normal data. */
   logsStatus?: number;
+  /** Cities whose history holds only their latest observation, as right after the first fetch. */
+  singleObservationCities?: readonly string[];
 }
 
 /** The API URLs the page requested, in order, by endpoint. */
@@ -41,7 +43,7 @@ export async function mockApi(page: Page, options: MockOptions = {}): Promise<Mo
       case '/api/cities':
         return route.fulfill({ json: CITIES.map((c) => c.city) });
       case '/api/weather/history':
-        return route.fulfill({ json: history(url) });
+        return route.fulfill({ json: history(url, options.singleObservationCities ?? []) });
       case '/api/weather/readings':
         return route.fulfill({ json: readings(url) });
       case '/api/logs':
@@ -67,7 +69,7 @@ export async function mockApi(page: Page, options: MockOptions = {}): Promise<Mo
 }
 
 /** One observation every 10 minutes for the last two hours of the requested range. */
-function history(url: URL) {
+function history(url: URL, singleObservationCities: readonly string[]) {
   const from = Date.parse(url.searchParams.get('from') ?? '');
   const to = Date.parse(url.searchParams.get('to') ?? '');
   const start = Math.max(from, to - 2 * 60 * 60 * 1000);
@@ -82,6 +84,9 @@ function history(url: URL) {
         temperatureMin: round(temperature - 1),
         temperatureMax: round(temperature + 1),
       });
+    }
+    if (singleObservationCities.includes(city)) {
+      points.splice(0, points.length - 1);
     }
     const latest = points[points.length - 1]!;
     return {

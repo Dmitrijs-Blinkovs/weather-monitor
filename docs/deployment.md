@@ -1,6 +1,6 @@
 # Deploying to Azure
 
-Status: deployment-ready, not deployed. The infrastructure templates (`infra/`), the azd definition (`azure.yaml`) and
+Status: prepared, not deployed (no run against a subscription yet). The infrastructure templates (`infra/`), the azd definition (`azure.yaml`) and
 the deployment workflow (`.github/workflows/deploy.yml`) are complete and checked in CI: Bicep compiles with strict
 linter rules (`infra/bicepconfig.json`) and the migrations run on SQL Server 2022. The first deployment is a
 deliberate, manual step. The topology diagram is
@@ -20,7 +20,7 @@ One resource group `rg-<environment>` with:
 | Azure SQL server + database `weatherdb` | Basic (5 DTU, 2 GB) | fetch log and snapshots | ~5 USD |
 | Key Vault | Standard, RBAC | the OpenWeatherMap API key | cents |
 | Log Analytics + Application Insights | pay-as-you-go | traces, metrics, logs, Key Vault and SQL audit logs | free up to 5 GB/month |
-| Scheduled query alert (+ action group if `ALERT_EMAIL` is set) | - | fires when no fetch succeeded for 15 minutes | ~0.10 USD |
+| Scheduled query alert (+ action group if `ALERT_EMAIL` is set) | - | fires when a city (or every city) had no successful fetch for 15 minutes | ~0.10 USD |
 
 Why Basic SQL and not serverless: a database written every minute never auto-pauses, so the serverless free offer
 (100,000 vCore-seconds) would be used up within days.
@@ -123,15 +123,16 @@ skipped until the repository variable `AZURE_ENV_NAME` exists, and fails with a 
      can read it). If `azd pipeline config` created a repository secret of the same name, delete it.
 4. Optional repository variables: `WEB_SKU_NAME` (`B1` default, or `F1`), `ALERT_EMAIL`.
 5. Merge to `main`. The workflow builds the packages in a job without any credential, waits for the approval, then
-   provisions, deploys the packages built from that commit and smoke-tests `/health` (must report `Healthy` within 5 minutes).
+   provisions, deploys the packages built from that commit and smoke-tests the release (`.github/scripts/smoke_test.py`: within 5 minutes `/health` must report `Healthy` and every
+   city in `appsettings.json` must have a successful fetch logged after the deployment started).
 
 ## Operations
 
 - **Telemetry:** Application Insights - function invocations with their OpenWeatherMap calls, web requests with their
   SQL calls, the
   `weather.fetch.attempts` / `weather.fetch.duration` metrics per city and outcome, exceptions, logs.
-- **Alert:** `alert-no-weather-data-*` fires when no successful fetch was recorded for 15 minutes (revoked key, quota,
-  provider outage, broken deployment). Without `ALERT_EMAIL` it is visible in the portal only.
+- **Alert:** `alert-no-weather-data-*` fires when a city, or every city, had no successful fetch for 15 minutes
+  (revoked key, quota, provider outage, a city the provider no longer knows, broken deployment). Without `ALERT_EMAIL` it is visible in the portal only.
 - **Health:** `/health/live` (App Service probe; process only) and `/health` (database + data freshness; for humans,
   monitors and the smoke test).
 - **Data:** the Fetch log page; or Query editor on the database (sign in with an Entra account you add as admin, or

@@ -78,6 +78,7 @@ public sealed class WeatherReadingsApiTests : IAsyncDisposable
     [InlineData("?from=2026-10-19T10:00:00Z")]
     [InlineData("?from=2026-10-19T12:00:00Z&to=2026-10-19T10:00:00Z")]
     [InlineData("?from=2026-09-01T00:00:00Z&to=2026-10-19T00:00:00Z")]
+    [InlineData("?from=2026-10-19T10:00:00&to=2026-10-19T12:00:00")]
     [InlineData("?" + Range + "&page=0")]
     [InlineData("?" + Range + "&page=1001")]
     [InlineData("?" + Range + "&pageSize=0")]

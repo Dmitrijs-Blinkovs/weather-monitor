@@ -10,12 +10,14 @@ internal sealed class WeatherHistoryReader(WeatherDbContext dbContext) : IWeathe
         DateTime toUtc,
         CancellationToken cancellationToken)
     {
-        // The provider refreshes an observation roughly every 10 minutes while we fetch every minute,
-        // so DISTINCT collapses repeated snapshots of the same observation into a single point.
+        // The provider refreshes an observation roughly every 10 minutes while we fetch every minute, so grouping by
+        // the observation's values collapses repeated snapshots into a single point. MAX(Id) marks the version stored
+        // last when the provider revised values under the same time; Id is the clustered key, so the covering index
+        // on (ObservedAtUtc, City) still answers the query without reading the rows.
         var rows = await dbContext.WeatherSnapshots
             .AsNoTracking()
             .Where(snapshot => snapshot.ObservedAtUtc >= fromUtc && snapshot.ObservedAtUtc <= toUtc)
-            .Select(snapshot => new
+            .GroupBy(snapshot => new
             {
                 snapshot.City,
                 snapshot.Country,
@@ -24,17 +26,18 @@ internal sealed class WeatherHistoryReader(WeatherDbContext dbContext) : IWeathe
                 snapshot.TemperatureMax,
                 snapshot.ObservedAtUtc,
             })
-            .Distinct()
+            .Select(group => new { group.Key, LatestSnapshotId = group.Max(snapshot => snapshot.Id) })
             .ToListAsync(cancellationToken);
 
         return rows
             .Select(row => new WeatherObservation(
-                row.City,
-                row.Country,
-                row.Temperature,
-                row.TemperatureMin,
-                row.TemperatureMax,
-                row.ObservedAtUtc))
+                row.Key.City,
+                row.Key.Country,
+                row.Key.Temperature,
+                row.Key.TemperatureMin,
+                row.Key.TemperatureMax,
+                row.Key.ObservedAtUtc,
+                row.LatestSnapshotId))
             .ToList();
     }
 }

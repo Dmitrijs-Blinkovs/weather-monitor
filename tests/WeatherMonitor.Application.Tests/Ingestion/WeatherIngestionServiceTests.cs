@@ -164,6 +164,29 @@ public sealed class WeatherIngestionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_cancellation_that_arrives_while_saving_still_stores_the_run_and_is_then_reported()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var saves = 0;
+        _repository
+            .AddRangeAsync(Arg.Any<IReadOnlyCollection<FetchAttempt>>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                // The host starts shutting down while the database is still writing; a real save honours its token.
+                await cancellation.CancelAsync();
+                await Task.Delay(TimeSpan.FromMilliseconds(50), call.Arg<CancellationToken>());
+                _stored = call.Arg<IReadOnlyCollection<FetchAttempt>>();
+                saves++;
+            });
+
+        await Should.ThrowAsync<OperationCanceledException>(() => CreateService().IngestAsync(cancellation.Token));
+
+        saves.ShouldBe(1);
+        _stored.Count.ShouldBe(3);
+        _stored.ShouldAllBe(attempt => attempt.IsSuccess);
+    }
+
+    [Fact]
     public async Task Every_attempt_is_counted_per_city_and_outcome_for_monitoring()
     {
         var meterFactory = _services.GetRequiredService<IMeterFactory>();

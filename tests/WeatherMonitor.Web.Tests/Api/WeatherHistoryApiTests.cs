@@ -61,6 +61,9 @@ public sealed class WeatherHistoryApiTests : IAsyncDisposable
     [InlineData("?from=not-a-date&to=2026-10-19T10:00:00Z")]
     [InlineData("?from=2026-10-19T12:00:00Z&to=2026-10-19T10:00:00Z")]
     [InlineData("?from=2026-09-01T00:00:00Z&to=2026-10-19T00:00:00Z")]
+    [InlineData("?from=2026-10-19T08:00:00&to=2026-10-19T10:00:00Z")]
+    [InlineData("?from=2026-10-19T08:00:00Z&to=2026-10-19T10:00:00")]
+    [InlineData("?from=2026-10-19&to=2026-10-20T00:00:00Z")]
     public async Task Rejects_a_missing_invalid_or_too_long_range(string query)
     {
         using var response = await _factory.CreateClient()

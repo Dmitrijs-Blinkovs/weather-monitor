@@ -61,7 +61,8 @@ infra/                            Bicep: main.bicep (resource group) + resources
                                   bicepconfig.json = strict linter rules, API versions at most two years old.
 azure.yaml                        Azure Developer CLI services: web -> App Service, functions -> Flex Consumption.
 .github/                          ci.yml (every push), deploy.yml (after green CI on main, OIDC; credential-free build
-                                  job + deploy job), dependabot.yml, PR template. Actions pinned to commit SHAs.
+                                  job + deploy job; scripts/smoke_test.py checks the new release), dependabot.yml, PR template.
+                                  Actions pinned to commit SHAs.
 ```
 
 ## Architecture in one screen
@@ -73,7 +74,7 @@ azure.yaml                        Azure Developer CLI services: web -> App Servi
 - **Write path:** timer -> `WeatherIngestionService` -> `IWeatherProvider` (one call per city, in parallel) ->
   `FetchAttempt.Succeeded/Failed` -> `IFetchAttemptRepository.AddRangeAsync` (one transaction for the run).
 - **Read path:** controller -> `IFetchLogReader` / `IWeatherHistoryService` / `IWeatherReadingsReader` -> EF Core
-  projections (no tracking, no payload).
+  projections (no tracking; lists never load the payload, only `GET /api/logs/{id}` returns one attempt's body).
 - **Expected failures are values, not exceptions:** the provider returns `WeatherFetchResult.Failure(...)`; only bugs throw.
 - **Domain and data model describe the same data:** EF configurations use the domain's constants, and
   `DataModelContractTests` fails when a text column's length and its domain rule drift apart (or a new text column has
@@ -85,7 +86,7 @@ azure.yaml                        Azure Developer CLI services: web -> App Servi
 - **Time is UTC everywhere** (`DateTime` with `Kind=Utc`, `...Utc` suffix); an EF converter restores the kind on read
   and rejects `Kind=Unspecified`, also in query parameters.
 - **Observability:** OpenTelemetry in both hosts (exported only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set),
-  ingestion metrics, `/health/live` (process) vs. `/health` (database + a successful fetch within 10 minutes).
+  ingestion metrics, `/health/live` (process) vs. `/health` (database + a successful fetch within 10 minutes for every city fetched in the last day).
 - **Security:** every input is capped, every response carries strict security headers, `/api/*` is rate-limited and
   cached, provider responses are size-capped and validated, and each Azure app has its own least-privilege identity
   ([docs/security.md](docs/security.md)).

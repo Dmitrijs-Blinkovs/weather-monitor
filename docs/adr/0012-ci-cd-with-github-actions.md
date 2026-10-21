@@ -17,7 +17,8 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
   - Browser tests: Playwright against the production build (ADR 0013).
   - Infrastructure: Bicep compile and lint, warnings fail the job.
 - **CD** (`.github/workflows/deploy.yml`): `azd provision` + `azd deploy` with OIDC federated credentials
-  (`azd pipeline config`), the `production` environment for approvals, and a `/health` smoke test. Manual trigger
+  (`azd pipeline config`), the `production` environment for approvals, and a smoke test (`Healthy`, plus a new successful fetch of every city
+  after the deployment started). Manual trigger
   until the first deployment has been made.
 - **Dependabot** updates NuGet, npm (both grouped) and GitHub Actions weekly; a pull request template carries the definition
   of done.

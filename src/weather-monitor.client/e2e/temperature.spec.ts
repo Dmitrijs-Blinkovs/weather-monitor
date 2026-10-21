@@ -41,6 +41,15 @@ test.describe('Temperature page', () => {
     await expect(chart.locator('.recharts-area')).toHaveCount(0);
   });
 
+  test('a city with a single observation so far is drawn as a point', async ({ page }) => {
+    await mockApi(page, { singleObservationCities: ['Riga'] });
+    await page.goto('/temperature');
+
+    const chart = page.getByRole('figure');
+    await expect(chart.locator('.recharts-line-dots .recharts-dot')).toHaveCount(1);
+    await expect(chart.locator('.chart-direct-label', { hasText: 'Riga' })).toBeVisible();
+  });
+
   test('the tooltip lists every city at the hovered time', async ({ page }) => {
     await mockApi(page);
     await page.goto('/temperature');

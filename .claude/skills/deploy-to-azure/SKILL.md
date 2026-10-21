@@ -71,4 +71,5 @@ Verify:
    `OPENWEATHERMAP_API_KEY` (delete a repository secret of that name if azd created one). Optional variables
    `WEB_SKU_NAME`, `ALERT_EMAIL`.
 4. From then on every green CI run on `main` deploys after approval; **Deploy to Azure** can also be started manually
-   from `main`. The smoke test requires `/health` to report `Healthy` within 5 minutes.
+   from `main`. The smoke test (`.github/scripts/smoke_test.py`) requires, within 5 minutes, `/health` to report `Healthy` and every
+   city to have a successful fetch after the deployment started.

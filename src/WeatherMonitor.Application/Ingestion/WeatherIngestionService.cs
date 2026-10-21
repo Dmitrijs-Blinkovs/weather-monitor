@@ -16,8 +16,12 @@ internal sealed partial class WeatherIngestionService(
     internal const string CancelledMessage =
         "Cancelled before completion (the host was shutting down or the run timed out).";
 
-    /// <summary>How long the attempts of a cancelled run may still take to be saved.</summary>
-    private static readonly TimeSpan SaveTimeoutAfterCancellation = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// How long saving a run may take. It is independent of the host's cancellation, so a run whose results exist is
+    /// stored even when the host starts shutting down meanwhile. Fetching (at most 30 s) plus this stays below the
+    /// Functions timeout of 55 s.
+    /// </summary>
+    private static readonly TimeSpan SaveBudget = TimeSpan.FromSeconds(10);
 
     public async Task<IngestionSummary> IngestAsync(CancellationToken cancellationToken)
     {
@@ -29,16 +33,20 @@ internal sealed partial class WeatherIngestionService(
             Succeeded: attempts.Count(attempt => attempt.IsSuccess),
             Failed: attempts.Count(attempt => !attempt.IsSuccess));
 
+        // Fetching follows the host's token, saving does not: even a cancelled run is stored (finished cities keep their
+        // result, unfinished ones are failures), also when the cancellation arrives during the save. There is no retry
+        // here, so an uncertain commit cannot store a run twice.
+        using (var saveBudget = new CancellationTokenSource(SaveBudget))
+        {
+            await SaveAsync(attempts, saveBudget.Token);
+        }
+
         if (cancellationToken.IsCancellationRequested)
         {
-            // Even a cancelled run is logged: finished cities keep their result, unfinished ones are failures.
-            using var saveTimeout = new CancellationTokenSource(SaveTimeoutAfterCancellation);
-            await SaveAsync(attempts, saveTimeout.Token);
             LogIngestionCancelled(logger, summary.Succeeded, summary.Failed);
             cancellationToken.ThrowIfCancellationRequested();
         }
 
-        await SaveAsync(attempts, cancellationToken);
         LogIngestionCompleted(logger, summary.Succeeded, summary.Failed);
         return summary;
     }
@@ -49,10 +57,11 @@ internal sealed partial class WeatherIngestionService(
         {
             await repository.AddRangeAsync(attempts, cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
-            // The whole run is lost (database down or full, a value the schema rejects). The runtime records the failed
-            // invocation too; this names what was lost. Rethrown so the invocation fails and the next minute retries.
+            // The whole run is lost (database down or full, a value the schema rejects, the save budget used up). The
+            // runtime records the failed invocation too; this names what was lost. Rethrown so the invocation fails and
+            // the next minute retries.
             LogSaveFailed(logger, exception, attempts.Length);
             throw;
         }

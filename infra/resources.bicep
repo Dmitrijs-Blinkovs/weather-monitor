@@ -94,7 +94,7 @@ resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2026-03-01' 
   location: location
   tags: tags
   properties: {
-    displayName: 'Weather Monitor: no successful weather fetch for 15 minutes'
+    displayName: 'Weather Monitor: a city without a successful weather fetch for 15 minutes'
     severity: 1
     enabled: true
     scopes: [logAnalytics.id]
@@ -104,11 +104,20 @@ resource noWeatherDataAlert 'Microsoft.Insights/scheduledQueryRules@2026-03-01' 
     criteria: {
       allOf: [
         {
+          // A row per city that was attempted but never succeeded in the window, plus one row when nothing succeeded
+          // at all (also when no attempt was recorded, e.g. a stopped timer).
           query: '''
-            AppMetrics
-            | where Name == "weather.fetch.attempts" and tostring(Properties["outcome"]) == "success"
-            | summarize Successes = sum(Sum)
-            | where Successes == 0
+            let attempts = AppMetrics
+              | where Name == "weather.fetch.attempts"
+              | extend City = tostring(Properties["city"]), Outcome = tostring(Properties["outcome"]);
+            let silentCities = attempts
+              | summarize Successes = sumif(Sum, Outcome == "success") by City
+              | where Successes == 0;
+            let nothingStored = attempts
+              | summarize Successes = sumif(Sum, Outcome == "success")
+              | where Successes == 0
+              | extend City = "(all cities)";
+            union silentCities, nothingStored
             '''
           timeAggregation: 'Count'
           operator: 'GreaterThan'
