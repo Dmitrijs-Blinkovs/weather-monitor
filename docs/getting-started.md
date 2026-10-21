@@ -9,7 +9,7 @@ Follow the steps in order; each ends with a check. Works for a human or for an A
 | Tool | Version | Check | Install (Windows) |
 |---|---|---|---|
 | Windows | 10/11 | - | LocalDB is Windows-only; see the note below for macOS/Linux |
-| .NET SDK | 10.0.100 or newer | `dotnet --list-sdks` | `winget install Microsoft.DotNet.SDK.10` (included with Visual Studio 2026) |
+| .NET SDK | 10.0.100 or a later 10.0.x (`global.json`) | `dotnet --list-sdks` | `winget install Microsoft.DotNet.SDK.10` (included with Visual Studio 2026) |
 | Node.js | 22 LTS or newer | `node -v` | `winget install OpenJS.NodeJS.LTS` |
 | SQL Server LocalDB | any current | `sqllocaldb info` lists `MSSQLLocalDB` | Visual Studio installer, or the SQL Server Express LocalDB installer |
 | Azure Functions Core Tools | 4.x | `func --version` | `winget install Microsoft.Azure.FunctionsCoreTools` (asks for admin rights) or `npm i -g azure-functions-core-tools@4` |
@@ -21,8 +21,8 @@ After installing with winget, open a new terminal so the updated `PATH` is picke
 
 > macOS/Linux: everything except LocalDB works. Run SQL Server in Docker
 > (`docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=<pwd> -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest`)
-> and override `ConnectionStrings:WeatherDb` for both hosts (user secrets for Web, `local.settings.json` value
-> `ConnectionStrings__WeatherDb` for Functions).
+> and override `ConnectionStrings:WeatherDb` for both hosts (the environment variable `ConnectionStrings__WeatherDb`
+> for Web, the `local.settings.json` value `ConnectionStrings__WeatherDb` for Functions).
 
 ## 2. Get the code
 
@@ -73,13 +73,13 @@ dotnet test --solution WeatherMonitor.slnx
 ```
 
 ```bash
-cd src/weather-monitor.client && npm ci && npm test
+(cd src/weather-monitor.client && npm ci && npm test)
 ```
 
 Browser tests (downloads Chromium once, then builds and previews the app itself):
 
 ```bash
-cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
+(cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e)
 ```
 
 Expected: build with 0 warnings; all tests green. None of these need the key, the database or Azure.
@@ -111,8 +111,8 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https
 | Check | Expected |
 |---|---|
 | Functions terminal | `FetchWeather: timerTrigger` and `PurgeOldData: timerTrigger`, then every minute `Weather ingestion completed: 3 succeeded, 0 failed` |
-| <http://localhost:5180/health/live> | `Healthy` (the web process runs) |
-| <http://localhost:5180/health> | `Healthy` once a fetch has succeeded; `Degraded` before the first fetch or when none succeeded for 10 minutes |
+| <https://localhost:7180/health/live> | `Healthy` (the web process runs) |
+| <https://localhost:7180/health> | `Healthy` once a fetch has succeeded; `Degraded` before the first fetch or when none succeeded for 10 minutes |
 | UI > **Fetch log** | three rows per minute, `Success`, HTTP 200 |
 | UI > **Temperature** | a card per city (London GB, Riga LV, Rome IT) and lines on the chart |
 
@@ -123,7 +123,7 @@ curl -X POST http://localhost:7071/admin/functions/FetchWeather -H "Content-Type
 ```
 
 The chart gets a new point roughly every 10 minutes (that is how often the provider updates an observation), so give it
-an hour for a meaningful line. Query the database directly:
+an hour for a meaningful line. Query the database directly (with `sqlcmd`, if installed):
 
 ```bash
 sqlcmd -S "(localdb)\MSSQLLocalDB" -d WeatherMonitor -Q "SELECT City, IsSuccess, COUNT(*) FROM FetchAttempts GROUP BY City, IsSuccess"
@@ -149,7 +149,7 @@ shows a Windows administrator prompt that only you can approve.
 | Fetch log shows `Failed`, HTTP 401 | Key not active yet (wait up to ~2 h) or mistyped. |
 | HTTP 404 for one city | Misspelt `Name` or wrong `CountryCode` in `src/WeatherMonitor.Functions/appsettings.json`. |
 | HTTP 429 | Rate limit; another app is using the same key. |
-| Functions host: `Microsoft.Azure.Storage ... connection refused` / timer does not fire | Azurite is not running. |
+| Functions host: storage connection errors to `127.0.0.1:10000` / timer does not fire | Azurite is not running. |
 | `A network-related or instance-specific error ... LocalDB` | `sqllocaldb start MSSQLLocalDB`; check `sqllocaldb info MSSQLLocalDB`. |
 | Web log says `Unable to connect to the SPA development server` | Vite did not start or listens elsewhere: check the npm console window. Vite must listen on `127.0.0.1:5173` (`server.host` in `vite.config.ts`, `SpaProxyServerUrl` in the Web `.csproj`); on `localhost` Node binds IPv6 `::1` only, which hangs where IPv6 loopback is blocked. |
 | Port 5173/5180/7071/7180 already in use | Another instance is running; stop it (Visual Studio Shift+F5 or close the terminal). |

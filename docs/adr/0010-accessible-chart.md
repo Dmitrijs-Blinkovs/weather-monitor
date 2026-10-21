@@ -13,9 +13,10 @@ dark mode) and read exact values.
 - Categorical slots in a fixed order (`--series-1..8` in `index.css`), validated for CVD separation and contrast in
   both modes; dark mode has its own steps.
 - Colour follows the city: `colorForCity` indexes the full alphabetical city list, so a filter never repaints a city.
-- Identity is never colour alone: legend plus direct labels at the end of each line; a table view of the same data.
+- Identity is never colour alone: legend plus direct labels at the end of each line; a colour-free table of the readings behind the chart (every
+  fetch, see the ADR 0004 amendment).
 - Tooltip lists every city's observation current at the hovered time, value first, with min/max and update time.
-- Text uses ink tokens, never series colours; status (success/failed) always pairs an icon with a label.
+- Text uses the text tokens (`--text-*`), never series colours; status (success/failed) always pairs an icon with a label.
 
 ## Consequences
 

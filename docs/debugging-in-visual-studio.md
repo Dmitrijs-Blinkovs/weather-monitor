@@ -9,7 +9,7 @@ Step-by-step manual procedure. Prerequisites and the API key are covered in
    **ASP.NET and web development** (includes LocalDB) and **Azure development** (Functions tools and Azurite).
    Node.js 22+ must be installed separately.
 2. Open `WeatherMonitor.slnx` (File > Open > Project/Solution).
-3. Set the API key: in **Solution Explorer** right-click `src/WeatherMonitor.Functions` > **Manage User Secrets** and
+3. Set the API key: in **Solution Explorer** right-click `WeatherMonitor.Functions` (in the `src` folder) > **Manage User Secrets** and
    save:
    ```json
    { "OpenWeatherMap:ApiKey": "<your-key>" }
@@ -42,7 +42,7 @@ To debug only one host, right-click the project > **Set as Startup Project**:
 What happens:
 
 1. Visual Studio starts **Azurite** (needed by the timer) automatically.
-2. A console window opens for the **Functions host** (port 7071). Wait for `Functions: FetchWeather: timerTrigger`.
+2. A console window opens for the **Functions host** (port 7071). Wait for `FetchWeather: timerTrigger`.
    At second 0 of every minute it logs `Weather ingestion completed: 3 succeeded, 0 failed`.
 3. A console window opens for the **Web host** (ports 7180/5180). It applies EF Core migrations (creates the
    `WeatherMonitor` database in LocalDB on the first run) and starts **Vite** (port 5173).

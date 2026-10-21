@@ -49,5 +49,5 @@ and SQLite. Register it in `Infrastructure/DependencyInjection.cs` (`AddPersiste
 
 ## 6. Finish
 
-Update the README API table and `docs/architecture.md` section 6, then run the `verify-changes` skill and look at the
+Update the README API table and `docs/architecture.md` section 7, then run the `verify-changes` skill and look at the
 result in the running app (`run-locally`).

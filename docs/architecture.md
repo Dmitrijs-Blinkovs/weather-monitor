@@ -55,7 +55,7 @@ flowchart TB
 | Layer | Contains | Depends on |
 |---|---|---|
 | Domain | `FetchAttempt`, `WeatherSnapshot`, `CurrentWeather`; invariants (UTC, lengths, error-text sanitising) | nothing |
-| Application | Use cases (`WeatherIngestionService`, `WeatherHistoryService`, `DataRetentionService`), ports (`IWeatherProvider`, `IFetchAttemptRepository`, `IFetchLogReader`, `IWeatherHistoryReader`, `IWeatherReadingsReader`), paging limits, DTOs, options, `IngestionMetrics`, DI extensions | Domain, `Microsoft.Extensions.*` abstractions |
+| Application | Use cases (`WeatherIngestionService`, `WeatherHistoryService`, `DataRetentionService`), ports (`IWeatherProvider`, `IFetchAttemptRepository`, `IFetchLogReader`, `IWeatherHistoryReader`, `IWeatherReadingsReader`), paging limits, DTOs, options, `IngestionMetrics`, DI extensions | Domain, `Microsoft.Extensions.*` (DI and logging abstractions, options, metrics) |
 | Infrastructure | EF Core (`WeatherDbContext`, configurations, migrations, repository, readers), `OpenWeatherMapClient`, health checks, migration hosted service, DI extensions | Application, EF Core SQL Server, Http.Resilience |
 | Hosts | Composition only (`Program.cs`), the timer functions, MVC controllers, request models, HTTP pipeline concerns (`Security/`, `Caching/`) | everything above |
 
@@ -134,8 +134,9 @@ sequenceDiagram
         Svc->>OWM: GetCurrentWeatherAsync("Rome", "IT")
         OWM-->>Svc: WeatherFetchResult (Success | Failure)
     end
-    Svc->>Svc: FetchAttempt.Succeeded / Failed (time and duration from TimeProvider), record metrics
+    Svc->>Svc: FetchAttempt.Succeeded / Failed (time and duration from TimeProvider)
     Svc->>Repo: AddRangeAsync(all attempts)  -- one SaveChanges = one transaction
+    Svc->>Svc: record metrics (only after the save succeeded)
     Svc-->>Timer: IngestionSummary(succeeded, failed)
 ```
 
@@ -146,7 +147,7 @@ Failure handling:
 | HTTP 4xx/5xx (e.g. 401 inactive key, 404 unknown city, 429 rate limit) | failed attempt with status code and the provider's `message` (or the reason phrase, or "HTTP nnn"); the body is kept in `ResponseBody` |
 | 200 with a content type other than `application/json` | failed attempt "Unexpected content type ..." |
 | 200 with unparsable or incomplete JSON | failed attempt with status 200 and the reason; the body is kept in `ResponseBody` |
-| 200 with data the domain rejects (implausible temperatures, missing country) | failed attempt with the domain's reason, e.g. "Implausible temperatures: ..." (`CurrentWeather.TryCreate`) |
+| 200 with data the domain rejects (implausible temperatures, a country that is not a two-letter code) | failed attempt with the domain's reason, e.g. "Implausible temperatures: ..." (`CurrentWeather.TryCreate`) |
 | Response larger than 64 KB, network error | failed attempt "Request failed: ...", API key redacted |
 | Timeout / circuit open (resilience pipeline) | failed attempt, no status code |
 | Unexpected exception in the provider | caught by the service, failed attempt "Unexpected error (Type)"; the exception text is only logged |
@@ -175,11 +176,11 @@ small and never block the minute-by-minute inserts for long ([ADR 0014](adr/0014
 | `GET /api/cities` | `CitiesController` -> `IFetchLogReader.GetCitiesAsync` | distinct cities from the log, alphabetical; cached 5 min |
 | `GET /api/weather/history?from&to` | `WeatherController` -> `IWeatherHistoryService` | ISO 8601 with offset; `from < to`; range <= 31 days; cached 60 s, varied by query |
 | `GET /api/weather/readings?from&to&page&pageSize` | `WeatherController` -> `IWeatherReadingsReader.GetPageAsync` | every successful fetch, newest first; range as for history; `page` 1-1,000; `pageSize` 1-200 (default 50); cached 10 s |
-| `GET /health/live` | health checks (none) | liveness: the process answers; App Service probe; not rate-limited |
+| `GET /health/live` | health checks (none) | liveness: the process answers; App Service probe; not subject to the per-client rate limit |
 | `GET /health` | health checks tagged `ready` | database reachable (`Unhealthy`/503 otherwise) and a successful fetch within 10 minutes (`Degraded` otherwise) |
 | `GET /openapi/v1.json` | OpenAPI (development only) | |
 | `GET/HEAD /api/*` (unknown) | minimal endpoint | `404` problem details - never the SPA; a wrong verb on a known route gets `405` |
-| anything else | `MapFallbackToFile("index.html")` | client-side routes of the SPA |
+| anything else | `MapFallbackToFile("/index.html")` | client-side routes of the SPA |
 
 History query: `SELECT DISTINCT City, Country, Temperature, TemperatureMin, TemperatureMax, ObservedAtUtc` within the
 range. Because the provider refreshes an observation about every 10 minutes, the minute-by-minute duplicates collapse
@@ -193,9 +194,9 @@ even when the provider returned the same observation as a minute before. It page
 attempts' `(IsSuccess, AttemptedAtUtc)` index and then reads only that page's snapshots, never the payload.
 
 Fetch-log and readings paging is a deferred join: `OFFSET @skip ... FETCH NEXT @take` runs over the narrow time index
-(keys only), then only the rows of the page are read. Measured on 90 days of data (388,800 attempts): page 1,000 x 200 reads
-~1,500 pages instead of ~640,000 with a plain OFFSET over full rows. The `COUNT(*)` for the page total (~1,750 pages)
-is now the larger part of an uncached log request.
+(keys only), then only the rows of the page are read, instead of a key lookup for every skipped row. On 90 days of
+data (388,800 attempts) page 1,000 x 200 answers in ~32 ms; the `COUNT(*)` for the page total scans an index and
+grows with the table ([performance.md](performance.md)).
 
 Request models (`FetchLogRequest`; `WeatherHistoryRequest` and `WeatherReadingsRequest`, both a `TimeRangeRequest :
 IValidatableObject`) validate against the Application's rules and return `400 application/problem+json` through
@@ -219,11 +220,12 @@ so the rate limiter partitions by the real client IP, and `AllowedHosts` is the 
 
 ```
 src/
-  main.tsx, App.tsx            Router (/temperature, /fetch-log), QueryClient, lazy-loaded pages, error boundary per route
+  main.tsx, App.tsx            Router (/temperature, /fetch-log), QueryClient, lazy-loaded pages, one error boundary around the routes
   api/                         types.ts (mirrors DTOs), http.ts (fetch + problem details), weatherApi.ts, WeatherApiContext.ts
   features/chart/              ChartPage, DateRangeFilter, CitySummaryCards, TemperatureChart, WeatherTooltip,
                                ReadingsTable, chartData.ts (pure data shaping), downsample.ts (LTTB)
   features/fetch-log/          FetchLogPage, FetchLogTable, AttemptDetailsDialog
+  hooks/                       useCities.ts (the city list shared by both pages)
   lib/                         dateRange.ts (presets, validation, datetime-local), format.ts, seriesColors.ts
   components/                  PageHeader, ErrorNotice, StatusBadge, ErrorBoundary, Pagination
   test/                        setup.ts, fixtures.ts, renderWithProviders.tsx
@@ -231,7 +233,7 @@ src/
 
 - **Data:** TanStack Query. Rolling presets (1 h, 6 h, 24 h, 7 d) are re-evaluated against "now" and refetched every
   60 s; their `to` is rounded up to the next whole minute, so all viewers within a minute send the same URL and hit the
-  server's output cache. A custom from/to range is fixed. The log and the readings table refresh every 30 s. Previous
+  server's output cache. A custom from/to range is fixed. The log refreshes every 30 s, the readings table too for rolling presets. Previous
   data stays visible (dimmed) while a new filter loads.
 - **Chart:** Recharts `ComposedChart`. Series are merged into one row per observation time (`toChartRows`); lines
   bridge gaps with `connectNulls`. Each city is downsampled to at most 600 points (largest-triangle-three-buckets keeps
@@ -243,7 +245,7 @@ src/
   visible even when the observation, and so the chart, did not change ([ADR 0004](adr/0004-distinct-observations-on-read.md)).
 - **Attempt details:** each log row has a **Payload** (success) or **Details** (failure) button. It opens a native
   `<dialog>` (focus, Esc and backdrop handled by the browser) that only then requests `GET /api/logs/{id}`, so the
-  log never transfers error texts or bodies; the result is cached for the session. JSON is indented for reading and rendered as
+  log never transfers error texts or bodies; an opened attempt is not requested again while it is cached. JSON is indented for reading and rendered as
   text, never as HTML; **Copy** takes the body exactly as stored.
 - **Paging:** both pagers (`components/Pagination.tsx`) stop at page 1,000 (`MAX_PAGE`, same cap as the API) and suggest
   filtering or a shorter period instead.

@@ -8,7 +8,7 @@ under concurrent load, and while the retention purge removes a large backlog.
 
 | Question | Answer (90 days, 388,800 attempts, 648 MB) |
 |---|---|
-| Is every page fast at the largest volume? | Yes. Every API request answers in under 100 ms uncached (the 31-day chart, the heaviest, in ~95 ms). |
+| Is every page fast at the largest volume? | Yes. Every API request has a median under 100 ms uncached (the 31-day chart, the heaviest, ~95 ms, slowest run 110 ms). |
 | Does paging stay flat as the tables grow? | Yes. Fetch-log page 1,000 x 200 (offset 199,800) takes 32 ms; readings page 1,000 of a month 14 ms. |
 | Is the payload to the browser bounded? | Yes. The longest chart range is 13,389 points: 249 KB gzip; the UI downsamples to 600 points per city. |
 | Does the UI stay responsive with a month of data? | Yes. Production build: ~0.4 s of main-thread work to draw 31 days, no long task while moving the tooltip. |
@@ -26,6 +26,7 @@ development data in `WeatherMonitor` is never touched; the scripts refuse any da
 ./tools/load-test/Seed-LoadTestData.ps1 -Days 90     # recreate the database and fill 90 days (about 20 s plus the EF build)
 ./tools/load-test/Start-LoadTestApi.ps1              # second API on http://127.0.0.1:5280 (keeps running; Ctrl+C stops it)
 ./tools/load-test/Measure-Api.ps1 -Clients 64        # in another terminal: the report below, as Markdown
+./tools/load-test/Measure-Api.ps1 -Runs 3 -Clients 256 -Rounds 3   # beyond the concurrency limit
 ./tools/load-test/Measure-Purge.ps1 -RetentionDays 30  # deletes data in the load-test database: time the purge
 ```
 
@@ -38,8 +39,8 @@ development data in `WeatherMonitor` is never touched; the scripts refuse any da
   concurrency limit (64 + a queue of 128) stays as in production.
 - **Measuring** adds a unique query parameter to every request, so the output cache never answers; each number is the
   median and the slowest of 10 uncached runs after one warm-up. One cached request is measured separately.
-- **The UI** was checked in the browser with the production build (`vite preview`, whose proxy forwards `/api` to the
-  load-test API), recording the main thread's long tasks with a `PerformanceObserver`.
+- **The UI** was checked in the browser with the production build (`vite preview` started with
+  `ASPNETCORE_URLS=http://127.0.0.1:5280`, so its proxy forwards `/api` to the load-test API), recording the main thread's long tasks with a `PerformanceObserver`.
 
 ## Results
 
@@ -107,7 +108,8 @@ The development build (`npm run dev`: unminified React, StrictMode renders twice
 - **Overload is refused, not suffered.** The concurrency limiter answers `429` beyond 64 running and 128 queued
   requests, and the output cache absorbs repeated polling.
 - **Counts and the city list grow with the table.** `COUNT(*)` for the log total and `DISTINCT City` scan an index:
-  33 ms at 90 days, linear in the row count, cached for 10 s and 5 min. Fine at the retention limit; a much longer
+  the city list took 25 ms at 31 days and 33 ms at 90 days, log page 1 (with its count) 15 and 20 ms; cached for
+  5 min and 10 s. Fine at the retention limit; a much longer
   retention would call for a city table or a cached count.
 - **Storage fits the planned database.** 90 days take a 648 MB data file (allocated, including free space), within
   the 2 GB of the Azure SQL Basic tier in [deployment.md](deployment.md).

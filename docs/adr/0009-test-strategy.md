@@ -16,12 +16,13 @@ that usually break: SQL translation, HTTP mapping, ASP.NET Core binding and vali
 - HTTP client: a stub `HttpMessageHandler` with recorded real responses.
 - API: `WebApplicationFactory` in a `Testing` environment with substituted ports and a temporary web root.
 - Front end: Vitest + Testing Library + jsdom, with the API injected through a React context.
-- One test project per production project; test names are sentences.
+- One test project per layer or host (domain tests live in Application.Tests); test names are sentences.
 
 ## Consequences
 
-- No SQL Server, Azurite, network or API key needed to run tests; the whole suite runs in seconds.
-- SQL Server-specific behaviour (collation, `INCLUDE` columns, migrations) is verified by running the app locally.
+- No SQL Server, Azurite, network or API key needed to run tests.
+- SQL Server-specific behaviour: CI applies, rolls back and re-applies every migration on SQL Server 2022, and
+  `MigrationTests` keep the model and the migrations in sync; collation and query plans are checked by running locally.
 
 ## Alternatives considered
 

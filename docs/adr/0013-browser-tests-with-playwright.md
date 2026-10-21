@@ -16,7 +16,7 @@ OpenWeatherMap key, which makes them slow and flaky in CI.
   tests also assert on the requests the UI makes (date range, filters, paging).
 - The browser runs with a Latvian locale and the Europe/Riga time zone to prove that the UI stays English and that
   custom ranges are converted to UTC correctly.
-- axe-core checks WCAG 2.x A/AA on both pages in light and dark mode.
+- axe-core checks WCAG 2.0 A/AA (`wcag2a`, `wcag2aa`) on both pages in light and dark mode.
 - The live end-to-end path (timer -> database -> API -> UI) is verified with the `run-locally` procedure.
 
 ## Consequences

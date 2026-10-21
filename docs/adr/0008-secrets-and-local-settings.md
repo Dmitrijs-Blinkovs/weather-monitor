@@ -9,8 +9,8 @@ The OpenWeatherMap key must never reach source control or logs. A reviewer shoul
 
 ## Decision
 
-- The key is read from `OpenWeatherMap:ApiKey`: user secrets locally (the Functions project has a `UserSecretsId`; Core
-  Tools and the worker both load it), app settings or Key Vault in Azure. `ValidateOnStart` stops the host with a clear
+- The key is read from `OpenWeatherMap:ApiKey`: user secrets locally (the Functions project has a `UserSecretsId`; the worker
+  loads them in the Development environment), app settings or Key Vault in Azure. `ValidateOnStart` stops the host with a clear
   message when it is missing.
 - `local.settings.json` is committed and contains only non-secret local defaults (Azurite, LocalDB, migrations on).
 - The key travels in the query string, so the client's default HTTP logging is removed, provider error messages are

@@ -55,8 +55,9 @@ Verify:
 - `<WEB_URL>/health/live` is `Healthy`; `<WEB_URL>/health` is `Healthy` within a few minutes (`Degraded` = no successful
   fetch yet - see `troubleshoot-ingestion`; `Unhealthy`/503 = the web app cannot reach the database).
 - The fetch log shows 3 successful attempts per minute; Application Insights shows the `weather.fetch.attempts` metric.
-- Function fails at start with `OpenWeatherMap:ApiKey is not configured` -> the Key Vault reference did not resolve:
-  check `id-func-*`'s Key Vault role and `keyVaultReferenceIdentity`.
+- The fetch log shows 401 `Invalid API key` right after deployment -> the Key Vault reference may not resolve (the
+  setting then holds the literal `@Microsoft.KeyVault(...)` text): check its status on the function app's
+  Environment variables blade, `id-func-*`'s Key Vault role and `keyVaultReferenceIdentity`.
 - Web app gets `Login failed for user '<token-identified principal>'` -> the web identity has no database user yet: the
   function creates it after migrating, so the function has not started, or `Database__ReadOnlyIdentity__*` on the
   function app is wrong.

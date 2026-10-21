@@ -49,11 +49,13 @@ src/
                                   = thin timer triggers. appsettings.json = cities, retention. host.json = timeout, OTel.
   WeatherMonitor.Web/             MVC API controllers (Controllers/), request models (Models/), Security/ (headers, rate
                                   limiting), Caching/ (output cache, compression), health endpoints, SPA hosting.
-  weather-monitor.client/         React 19 + TS + Vite. src/features/{chart,fetch-log}, src/api, src/lib, src/test;
+  weather-monitor.client/         React 19 + TS + Vite. src/features/{chart,fetch-log}, src/api, src/components, src/hooks,
+                                  src/lib, src/test;
                                   e2e/ = Playwright browser tests with a mocked API (e2e/support/mockApi.ts).
                                   vite.config.ts mirrors the server's security headers for `vite preview`.
 tests/
-  WeatherMonitor.<Project>.Tests/ One test project per production project (xUnit v3, Shouldly, NSubstitute).
+  WeatherMonitor.<Project>.Tests/ One test project per production project; Domain tests live in Application.Tests
+                                  (xUnit v3, Shouldly, NSubstitute).
 tools/load-test/                  Load test: seed a separate LoadTest database with N days, run a second API, measure.
 infra/                            Bicep: main.bicep (resource group) + resources.bicep (everything else);
                                   bicepconfig.json = strict linter rules, API versions at most two years old.
@@ -119,7 +121,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   `InternalsVisibleTo`). Private fields `_camelCase`; `const` and `static readonly` fields PascalCase.
   `.editorconfig` is enforced in the build, naming rules included (`dotnet_diagnostic.IDE1006.severity`).
 - Logging through `[LoggerMessage]` source-generated methods, never string interpolation in log calls.
-- Options classes bind a named section, validate with DataAnnotations/`IValidatableObject` and `ValidateOnStart()`.
+- Options classes bind a named section; those with rules validate with DataAnnotations/`IValidatableObject` and
+  `ValidateOnStart()`.
 - New package: add `<PackageVersion>` to `Directory.Packages.props`, then a version-less `<PackageReference>`.
   High/critical NuGet advisories (also transitive) fail the build; pin a fixed transitive version there if needed.
 - Never put secrets in files under source control. The OpenWeatherMap key lives in user secrets locally.
@@ -133,7 +136,7 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   `WeatherApiFactory` (real pipeline, substituted services). No test needs SQL Server, network or Azure.
 
 **Front end**
-- Feature folders (`src/features/<feature>`), shared code in `src/lib`, `src/components`, `src/api`.
+- Feature folders (`src/features/<feature>`), shared code in `src/lib`, `src/components`, `src/hooks`, `src/api`.
 - Components get the API from `WeatherApiContext` (tests inject `fakeApi()`); server state via TanStack Query.
 - Colours are CSS tokens in `src/index.css`; series colours are `--series-1..8` in fixed order, assigned per city by
   `colorForCity` (never by position). Text never uses a series colour.
@@ -143,8 +146,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 
 1. `dotnet build WeatherMonitor.slnx` - 0 warnings, 0 errors.
 2. `dotnet test --solution WeatherMonitor.slnx` and `npm audit --omit=dev --audit-level=high && npm run lint && npm test
-   && npm run test:e2e && npm run build` in the client - green (CI runs exactly these, plus the Bicep build and a
-   migrations up/down job on SQL Server).
+   && npm run test:e2e && npm run build` in the client - green (CI runs these, with coverage and a Release build, plus the Bicep
+   build and a migrations up/down job on SQL Server).
 3. New behaviour has tests at the lowest layer that can prove it; bugs get a test that fails without the fix.
 4. A data model change has a migration; an API change is reflected in `src/api/types.ts` and the README API table.
 5. A changed design decision has a new or superseding ADR in `docs/adr/`; a changed security control is reflected in
@@ -169,7 +172,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   each fetch arrived) - do not "fix" the duplicates in the writer.
 - The API key travels in the query string: keep `RemoveAllLoggers()` on the client and `Redact(...)` on messages.
 - `[Produces("application/json")]` on controllers turns RFC 7807 errors into `application/json` - do not add it.
-- Unknown `/api/*` routes must stay 404 (`app.Map("/api/{**path}", ...)` before `MapFallbackToFile`).
+- Unknown `/api/*` routes must stay 404 (`app.MapMethods("/api/{**path}", [GET, HEAD], ...)` before `MapFallbackToFile`, so a
+  wrong verb on a known route still gets 405).
 - `DateTime` with `Kind=Unspecified` is rejected by the domain and by `UtcDateTimeConverter` (writes and query
   parameters) on purpose: read as local time it would shift by the machine's offset. SQLite cannot order `DateTimeOffset`,
   which is one reason the model uses UTC `DateTime`.

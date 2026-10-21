@@ -80,7 +80,7 @@ src/
                                   checks; hosts the built React app.
   weather-monitor.client          React 19 + TypeScript + Vite, TanStack Query, Recharts; Playwright tests in e2e/.
 tests/
-  WeatherMonitor.*.Tests          One test project per production project.
+  WeatherMonitor.*.Tests          One test project per production project (Domain tests live in Application.Tests).
 infra/                            Bicep templates for Azure (azure.yaml drives them with the Azure Developer CLI).
 ```
 
@@ -176,13 +176,12 @@ flowchart LR
 | Hosting | Functions on **Flex Consumption** (.NET 10 isolated, scale to zero), Web on **App Service Linux**, **Azure SQL** Basic; about 19 USD/month | [ADR 0011](docs/adr/0011-azure-hosting-and-identity.md) |
 | Identity and secrets | No password or key anywhere: **one managed identity per app** with least privilege (the web app can only read the database), **Entra-only SQL**, the API key as a **Key Vault reference**, identity-based Storage with shared keys disabled | [ADR 0015](docs/adr/0015-least-privilege-identities.md) |
 | Infrastructure as code | **Bicep + Azure Developer CLI**, strict linter rules ([bicepconfig.json](infra/bicepconfig.json)) and current API versions, compiled in CI | [infra/](infra), [azure.yaml](azure.yaml) |
-| Delivery | GitHub Actions with **OpenID Connect**: a build job without credentials, a deploy job behind the protected `production` environment, only CI-green pushes to `main`, a `/health` smoke test | [ADR 0012](docs/adr/0012-ci-cd-with-github-actions.md) |
+| Delivery | GitHub Actions with **OpenID Connect**: a build job without credentials, a deploy job in the `production` environment (where the approval rule is set), only CI-green pushes to `main`, a `/health` smoke test | [ADR 0012](docs/adr/0012-ci-cd-with-github-actions.md) |
 | Observability | **OpenTelemetry** to Application Insights (logs, traces, metrics), ingestion metrics, a data-freshness health check, an **alert** after 15 minutes without data | [ADR 0016](docs/adr/0016-observability.md) |
-| Security | HTTPS and TLS 1.3, FTP and basic-auth publishing off, the function closed to inbound traffic, Key Vault and SQL audit logs; private endpoints, purge protection and Defender listed as next steps | [docs/security.md](docs/security.md) |
+| Security | HTTPS only (TLS 1.3 on the web app, 1.2 on the function), FTP and basic-auth publishing off, the function closed to inbound traffic, Key Vault and SQL audit logs; private endpoints, purge protection and Defender listed as next steps | [docs/security.md](docs/security.md) |
 
-**Checked without a subscription:** the templates compile with the strict linter (CI); every migration is applied, rolled
-back and re-applied on SQL Server 2022 (CI); both hosts' telemetry export was checked against a local fake Application
-Insights endpoint; the read-only database grant (T-SQL) was syntax-checked on SQL Server.
+**Checked without a subscription, in CI on every push:** the templates compile with the strict linter, and every
+migration is applied, rolled back and re-applied on SQL Server 2022.
 
 **From zero to running** (Owner on a subscription; the key is set by you, never committed):
 
@@ -273,18 +272,18 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
   caching and compression.
 - **Functions** - timer bindings (every minute, daily purge), shipped configuration, delegation to the use cases.
 - **Front end (Vitest)** - date-range rules, formatting, chart data shaping and downsampling, tooltip, filters, tables,
-  paging limits, the error boundary and both pages against a fake API.
+  the attempt-details dialog, paging limits, the error boundary and both pages against a fake API.
 - **Browser (Playwright)** - both pages in Chromium against the production build with a mocked API: chart with all
-  cities, tooltip, presets and custom date/time range (time-zone conversion), readings table and its paging, fetch log filters and paging,
-  error state, English UI in a Latvian browser, axe-core accessibility in light and dark mode, no CSP violations.
+  cities, tooltip, presets and custom date/time range (time-zone conversion), readings table and its paging, fetch log filters, paging and
+  attempt details, error state, English UI in a Latvian browser, axe-core accessibility in light and dark mode, no CSP violations.
 
 ## CI/CD
 
-- **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and pull request: .NET build (high/critical NuGet
+- **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and on pull requests to `main`: .NET build (high/critical NuGet
   advisories fail it) and tests with coverage summary, `npm audit`, front-end lint/tests/coverage/build, Playwright
   browser tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
 - **CD** ([deploy.yml](.github/workflows/deploy.yml)) after a green CI run on `main` once Azure is configured: a build job
-  without credentials packages both apps; the deploy job (OpenID Connect, `production` environment with approval)
+  without credentials packages both apps; the deploy job (OpenID Connect, `production` environment, which is where required reviewers are configured)
   provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` - see
   [docs/deployment.md](docs/deployment.md).
 - **Supply chain:** actions pinned to commit SHAs, lockfiles and central package versions, Dependabot for NuGet, npm and
@@ -304,7 +303,7 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 
 Invalid queries return `400` with an RFC 7807 `application/problem+json` body; unknown API routes return `404`, a wrong
 HTTP method `405`, more than `RateLimiting:PermitsPerMinute` requests per client `429` with `Retry-After`. Responses are
-cached briefly on the server (history 60 s, log 10 s, cities 5 min). In development the OpenAPI document is served at
+cached briefly on the server (history 60 s, log and readings 10 s, attempt details and cities 5 min). In development the OpenAPI document is served at
 `/openapi/v1.json`.
 
 ## Configuration

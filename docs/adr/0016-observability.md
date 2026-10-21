@@ -8,7 +8,7 @@
 Expected failures are values, not exceptions (ADR 0003), so a run in which every city fails (for example a revoked
 key) is still a "successful" function invocation. Logs alone would not tell anyone that no data has arrived for an
 hour. The first version also relied on Application Insights auto-instrumentation, with no traces of the outgoing
-OpenWeatherMap and SQL calls from the function.
+OpenWeatherMap calls from the function.
 
 ## Decision
 
@@ -36,9 +36,6 @@ OpenWeatherMap and SQL calls from the function.
 - `weather.fetch.attempts` and `weather.fetch.duration` are recorded only after the run is stored. When the database
   rejects the writes (down, full, schema mismatch), no success is counted, so the alert fires; the service also logs
   "Storing N fetch attempts failed" as an error before the invocation fails.
-- Verified locally against a fake ingestion endpoint (`APPLICATIONINSIGHTS_CONNECTION_STRING` pointing at localhost):
-  both hosts export logs (including the service's own messages), metrics (including `weather.fetch.*`), requests and
-  dependencies (OpenWeatherMap, SQL).
 
 ## Alternatives considered
 

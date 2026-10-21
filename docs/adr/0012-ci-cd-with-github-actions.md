@@ -19,7 +19,7 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
 - **CD** (`.github/workflows/deploy.yml`): `azd provision` + `azd deploy` with OIDC federated credentials
   (`azd pipeline config`), the `production` environment for approvals, and a `/health` smoke test. Manual trigger
   until the first deployment has been made.
-- **Dependabot** groups NuGet, npm and GitHub Actions updates weekly; a pull request template carries the definition
+- **Dependabot** updates NuGet, npm (both grouped) and GitHub Actions weekly; a pull request template carries the definition
   of done.
 
 ## Consequences

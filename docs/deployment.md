@@ -2,8 +2,8 @@
 
 Status: deployment-ready, not deployed. The infrastructure templates (`infra/`), the azd definition (`azure.yaml`) and
 the deployment workflow (`.github/workflows/deploy.yml`) are complete and checked in CI: Bicep compiles with strict
-linter rules (`infra/bicepconfig.json`) and the migrations run on SQL Server 2022. Telemetry export was checked against
-a local fake Application Insights endpoint. The first deployment is a deliberate, manual step. The topology diagram is
+linter rules (`infra/bicepconfig.json`) and the migrations run on SQL Server 2022. The first deployment is a
+deliberate, manual step. The topology diagram is
 in the [README](../README.md#azure).
 
 ## What gets created
@@ -39,7 +39,8 @@ Details and the OWASP mapping: [security.md](security.md).
   can read, not write; it cannot read the Key Vault or the storage account.
 - **The API key** is a Key Vault secret; the function's app setting is a Key Vault reference.
 - **Network.** HTTPS only (TLS 1.3 on the web app, 1.2 elsewhere), FTP and basic-auth publishing disabled, the function
-  app denies all inbound traffic (it only has timers), SQL is reachable from Azure services only.
+  app's site and admin API deny all inbound traffic (it only has timers; deployment goes through the Entra-protected
+  SCM endpoint), SQL is reachable from Azure services only.
 - **Audit.** Key Vault and SQL audit logs go to Log Analytics.
 
 ## Prerequisites
@@ -103,7 +104,7 @@ Verify:
 ## Continuous deployment from GitHub
 
 The workflow runs automatically after every green CI run on `main` (and can be started manually from `main`). It is
-skipped until the repository variables below exist.
+skipped until the repository variable `AZURE_ENV_NAME` exists, and fails with a clear message if the others are missing.
 
 1. Connect the repository to Azure once. `azd pipeline config` creates an app registration (or managed identity) with
    federated credentials, assigns it roles and sets the repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
@@ -122,11 +123,12 @@ skipped until the repository variables below exist.
      can read it). If `azd pipeline config` created a repository secret of the same name, delete it.
 4. Optional repository variables: `WEB_SKU_NAME` (`B1` default, or `F1`), `ALERT_EMAIL`.
 5. Merge to `main`. The workflow builds the packages in a job without any credential, waits for the approval, then
-   provisions, deploys the tested packages and smoke-tests `/health` (must report `Healthy` within 5 minutes).
+   provisions, deploys the packages built from that commit and smoke-tests `/health` (must report `Healthy` within 5 minutes).
 
 ## Operations
 
-- **Telemetry:** Application Insights - traces of every run (OpenWeatherMap and SQL calls), web requests, the
+- **Telemetry:** Application Insights - function invocations with their OpenWeatherMap calls, web requests with their
+  SQL calls, the
   `weather.fetch.attempts` / `weather.fetch.duration` metrics per city and outcome, exceptions, logs.
 - **Alert:** `alert-no-weather-data-*` fires when no successful fetch was recorded for 15 minutes (revoked key, quota,
   provider outage, broken deployment). Without `ALERT_EMAIL` it is visible in the portal only.
@@ -155,7 +157,7 @@ Accepted for this size, recommended for a long-lived production environment (see
 | Option | Effect | Cost |
 |---|---|---|
 | Private endpoints for SQL, Key Vault and Storage + VNet integration of both apps, `publicNetworkAccess: Disabled` | removes the "any Azure network" SQL firewall rule | ~10-20 USD/month |
-| Key Vault purge protection | a deleted vault/secret cannot be purged for 90 days (blocks `azd down --purge` + re-create) | free |
+| Key Vault purge protection | a deleted vault/secret cannot be purged during the soft-delete retention (7 days as configured; blocks `azd down --purge` + re-create) | free |
 | An Entra group as SQL administrator, migration bundles in the pipeline | the function no longer needs admin rights at run time | free |
 | `DisableLocalAuth` on Application Insights + Monitoring Metrics Publisher role | telemetry accepted only with Entra tokens | free |
 | Microsoft Defender for SQL / App Service | threat detection, vulnerability assessment | paid |
@@ -174,7 +176,7 @@ lines in `infra/resources.bicep` or an app setting:
 | Private networking | A VNet with integration subnets for both apps, private endpoints and private DNS zones for SQL, Key Vault and Storage, `publicNetworkAccess: 'Disabled'` | [Hardening options](#hardening-options) |
 | Sign-in for the UI and API | App Service built-in authentication with Entra ID (`authsettingsV2`), or `Microsoft.Identity.Web` in code | web app in `resources.bicep` |
 | More alerts | Scheduled query or metric alerts next to `noWeatherDataAlert`: failed invocations, HTTP 5xx rate, SQL DTU | `resources.bicep` |
-| Scale | Flex `maximumInstanceCount` / `instanceMemoryMB`, the App Service plan SKU and instance count, the SQL tier | `resources.bicep`, `main.parameters.json` |
+| Scale | Flex `maximumInstanceCount` / `instanceMemoryMB`, the App Service plan SKU and instance count, the SQL tier | `resources.bicep` (the web plan SKU also via `WEB_SKU_NAME` in `main.parameters.json`) |
 | Another weather provider | A new `IWeatherProvider` adapter with its options in Infrastructure; Bicep changes only for its secret | `AGENTS.md`, ADR 0001 |
 | Migrations from the pipeline | `dotnet ef migrations bundle` in the build job, run by the deploy job with an Entra admin group; the function then needs no admin rights | ADR 0015 |
 
