@@ -9,14 +9,13 @@ internal static class TestData
 
     public static CurrentWeather Weather(
         double temperature = 11.5,
-        string country = "GB",
-        DateTime? observedAtUtc = null) =>
+        string country = "GB") =>
         new(
             country: country,
             temperature: temperature,
             temperatureMin: temperature - 1,
             temperatureMax: temperature + 1,
-            observedAtUtc: observedAtUtc ?? Now.AddMinutes(-5),
+            observedAtUtc: Now.AddMinutes(-5),
             rawPayload: """{"name":"Test","main":{"temp":11.5}}""");
 
     public static WeatherObservation Observation(

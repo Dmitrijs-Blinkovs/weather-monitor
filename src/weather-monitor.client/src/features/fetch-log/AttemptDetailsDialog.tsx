@@ -73,9 +73,7 @@ function AttemptDetails({ entry }: { entry: FetchLogEntry }) {
 
       {!entry.isSuccess && (
         <section>
-          <h3 className="dialog__section-title">
-            Error
-          </h3>
+          <h3 className="dialog__section-title">Error</h3>
           {details.data && (
             <p className="dialog__error">{details.data.errorMessage ?? 'No error text was stored.'}</p>
           )}
@@ -83,9 +81,7 @@ function AttemptDetails({ entry }: { entry: FetchLogEntry }) {
       )}
 
       <section>
-        <h3 className="dialog__section-title">
-          Response body
-        </h3>
+        <h3 className="dialog__section-title">Response body</h3>
         {details.isPending && <p className="muted">Loading the response body…</p>}
         {details.isError && <ErrorNotice error={details.error} onRetry={() => void details.refetch()} />}
         {details.data &&

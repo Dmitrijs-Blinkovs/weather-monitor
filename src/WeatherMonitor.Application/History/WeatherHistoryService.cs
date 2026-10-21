@@ -17,7 +17,7 @@ internal sealed class WeatherHistoryService(IWeatherHistoryReader reader) : IWea
         return new WeatherHistoryDto(fromUtc, toUtc, BuildSeries(observations));
     }
 
-    internal static IReadOnlyList<CityTemperatureSeriesDto> BuildSeries(IEnumerable<WeatherObservation> observations) =>
+    private static IReadOnlyList<CityTemperatureSeriesDto> BuildSeries(IEnumerable<WeatherObservation> observations) =>
         observations
             .GroupBy(observation => observation.City, StringComparer.OrdinalIgnoreCase)
             .Select(BuildCitySeries)

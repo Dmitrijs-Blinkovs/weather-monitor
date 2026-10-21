@@ -7,7 +7,7 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 /** Must match WeatherHistoryRules.MaxRange on the server. */
-export const MAX_RANGE_DAYS = 31;
+const MAX_RANGE_DAYS = 31;
 
 export const RANGE_PRESETS = [
   { id: '1h', label: 'Last hour', durationMs: HOUR },

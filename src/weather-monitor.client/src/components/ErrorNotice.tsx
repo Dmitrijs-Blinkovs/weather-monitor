@@ -7,7 +7,7 @@ export function ErrorNotice({ error, onRetry }: ErrorNoticeProps) {
   const message = error instanceof Error ? error.message : 'Something went wrong.';
 
   return (
-    <div className="notice notice--error" role="alert">
+    <div className="notice" role="alert">
       <span className="notice__icon" aria-hidden="true">
         !
       </span>

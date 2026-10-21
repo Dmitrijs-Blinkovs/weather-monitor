@@ -29,7 +29,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <div className="notice notice--error" role="alert">
+      <div className="notice" role="alert">
         <span className="notice__icon" aria-hidden="true">
           !
         </span>

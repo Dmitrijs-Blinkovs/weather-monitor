@@ -73,7 +73,7 @@ internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenW
         }
     }
 
-    internal static bool TryParse(
+    private static bool TryParse(
         string body,
         [NotNullWhen(true)] out CurrentWeather? weather,
         [NotNullWhen(false)] out string? error)

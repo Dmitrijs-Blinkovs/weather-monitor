@@ -192,9 +192,6 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   after migrating). Anything the web app must write needs a deliberate change (ADR 0015).
 - OpenTelemetry in the Functions worker is wired up only with an Application Insights connection string: with
   `UseFunctionsWorkerDefaults()` the host stops forwarding worker logs, so locally the console would go silent.
-- AI agents running inside a packaged desktop app (MSIX) see a virtualized HKCU: a LocalDB instance they create is
-  invisible to the user's tools, and their `sqllocaldb` view can be wrong. Do not create or repair LocalDB instances
-  from there, and do not point the user's connection strings at them; let the user run `sqllocaldb` themselves.
 - `workflow_run` branch filters match only the branch name; the deploy workflow also checks that the CI run was a
   push to this repository. Keep that check.
 

@@ -13,7 +13,7 @@ export function PageHeader({ title, description, aside }: PageHeaderProps) {
         <h1 className="page-header__title">{title}</h1>
         <p className="page-header__description">{description}</p>
       </div>
-      {aside && <div className="page-header__aside">{aside}</div>}
+      {aside && <div>{aside}</div>}
     </header>
   );
 }

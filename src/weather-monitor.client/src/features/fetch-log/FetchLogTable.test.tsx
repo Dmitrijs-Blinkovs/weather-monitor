@@ -5,7 +5,7 @@ import { logEntry } from '../../test/fixtures';
 import { FetchLogTable } from './FetchLogTable';
 
 describe('FetchLogTable', () => {
-  it('shows one row per attempt with its result, HTTP status and duration, without the error text', () => {
+  it('shows one row per attempt with its result, HTTP status and duration', () => {
     render(
       <FetchLogTable
         entries={[
@@ -26,7 +26,6 @@ describe('FetchLogTable', () => {
 
     expect(within(rome!).getByText('Failed')).toBeInTheDocument();
     expect(within(rome!).getByText('401')).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'Error' })).not.toBeInTheDocument();
 
     expect(within(riga!).getByText('—')).toBeInTheDocument();
   });

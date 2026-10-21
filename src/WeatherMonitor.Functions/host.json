@@ -4,9 +4,7 @@
   "telemetryMode": "OpenTelemetry",
   "logging": {
     "logLevel": {
-      "default": "Information",
-      "Function.FetchWeather": "Information",
-      "Function.PurgeOldData": "Information"
+      "default": "Information"
     }
   }
 }

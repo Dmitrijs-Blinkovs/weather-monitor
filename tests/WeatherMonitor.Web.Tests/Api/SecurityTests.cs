@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Hosting;
 
 namespace WeatherMonitor.Web.Tests.Api;
 

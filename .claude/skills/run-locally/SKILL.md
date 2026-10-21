@@ -61,13 +61,8 @@ Stop the background processes you started (Web stops Vite with it). Leave proces
 
 - Data stops arriving while the Web host runs: only the Web project was started. In Visual Studio pick the
   **Web + Functions** profile; from the CLI start Azurite and the Functions host too.
-- An agent shell inside a packaged desktop app (MSIX, e.g. the Claude desktop app) sees a virtualized HKCU registry:
-  LocalDB instances it creates or starts are invisible to the user's Visual Studio ("The specified LocalDB instance
-  does not exist"), and `sqllocaldb info` there can disagree with reality ("Stopped" while running, "failed to start").
-  From such a shell never create, start, stop or repair LocalDB instances and never point the user's settings at
-  them; ask the user to run `sqllocaldb info MSSQLLocalDB` in their own terminal. Never restart a shared instance.
 - A new API key answers 401 for up to ~2 hours; failures then appear in the fetch log, which is correct behaviour.
-- Typing a deep link on port 5180 returns 404 in development; navigate from `/` or use port 5173.
+- Typing a deep link on port 5180 returns 404 in development; navigate from `/` or use http://127.0.0.1:5173.
 - The chart gets a new point only when the provider updates an observation (~every 10 minutes).
 - Rebuilding while hosts run fails with locked DLLs (MSB3026/MSB3027) - stop the hosts first.
 - `Unable to connect to the SPA development server` with Vite running: check that it listens on `127.0.0.1:5173`.

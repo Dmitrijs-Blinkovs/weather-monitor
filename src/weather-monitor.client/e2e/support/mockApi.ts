@@ -13,9 +13,8 @@ interface MockOptions {
   logsStatus?: number;
 }
 
-export interface MockedApi {
-  /** Every API URL the page requested, in order. */
-  requests: URL[];
+/** The API URLs the page requested, in order, by endpoint. */
+interface MockedApi {
   historyRequests(): URL[];
   readingRequests(): URL[];
   logRequests(): URL[];
@@ -60,7 +59,6 @@ export async function mockApi(page: Page, options: MockOptions = {}): Promise<Mo
   });
 
   return {
-    requests,
     historyRequests: () => requests.filter((url) => url.pathname === '/api/weather/history'),
     readingRequests: () => requests.filter((url) => url.pathname === '/api/weather/readings'),
     logRequests: () => requests.filter((url) => url.pathname === '/api/logs'),

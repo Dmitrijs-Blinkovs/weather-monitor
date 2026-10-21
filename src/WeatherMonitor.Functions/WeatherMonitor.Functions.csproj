@@ -43,10 +43,6 @@
     </None>
   </ItemGroup>
 
-  <ItemGroup>
-    <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
-  </ItemGroup>
-
   <!--
     The Functions SDK gives `dotnet run` a working directory relative to the project ("bin\Debug\net10.0\"),
     so running the project from any other folder fails ("The directory name is invalid"). Make it absolute.

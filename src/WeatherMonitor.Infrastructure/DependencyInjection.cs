@@ -16,6 +16,7 @@ namespace WeatherMonitor.Infrastructure;
 public static class DependencyInjection
 {
     public const string ConnectionStringName = "WeatherDb";
+    /// <summary>Apply pending EF Core migrations when the host starts; read while composing the services.</summary>
     public const string ApplyMigrationsOnStartupKey = "Database:ApplyMigrationsOnStartup";
 
     /// <summary>

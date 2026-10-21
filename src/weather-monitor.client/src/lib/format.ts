@@ -2,7 +2,7 @@
  * The UI is English-only, so dates and numbers are always formatted in English (24-hour clock) regardless of the
  * browser's language. Times are still shown in the viewer's own time zone.
  */
-export const UI_LOCALE = 'en-GB';
+const UI_LOCALE = 'en-GB';
 
 const dateTimeFormat = new Intl.DateTimeFormat(UI_LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 const dateTimeWithSecondsFormat = new Intl.DateTimeFormat(UI_LOCALE, { dateStyle: 'medium', timeStyle: 'medium' });

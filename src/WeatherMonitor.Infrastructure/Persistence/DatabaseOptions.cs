@@ -5,9 +5,6 @@ public sealed class DatabaseOptions
 {
     public const string SectionName = "Database";
 
-    /// <summary>Apply pending EF Core migrations when the host starts.</summary>
-    public bool ApplyMigrationsOnStartup { get; init; }
-
     /// <summary>
     /// Optional Entra identity that gets read-only access (db_datareader) after the migrations, e.g. the web app's
     /// managed identity in Azure. Requires the migrating identity to be the SQL Entra administrator.

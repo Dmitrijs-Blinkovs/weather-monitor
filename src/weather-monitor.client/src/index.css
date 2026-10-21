@@ -28,7 +28,6 @@
   --series-other: #898781;
 
   /* Status colours are reserved for state and always ship with an icon and a label. */
-  --status-good: #0ca30c;
   --status-good-ink: #006300;
   --status-critical: #d03b3b;
   --status-critical-ink: #b42323;
@@ -39,7 +38,7 @@
 
 /* ---------- Design tokens (dark): own steps from the same ramps ---------- */
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme='light'])) {
+  :root {
     color-scheme: dark;
 
     --page: #0d0d0d;

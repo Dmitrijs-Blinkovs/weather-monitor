@@ -29,7 +29,7 @@ export function App() {
   );
 }
 
-export function AppShell() {
+function AppShell() {
   const location = useLocation();
 
   return (
