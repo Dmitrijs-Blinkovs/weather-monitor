@@ -54,14 +54,14 @@ flowchart LR
         P[PurgeOldDataFunction<br/>timer: daily]
     end
     subgraph ASP.NET Core
-        API[MVC API controllers<br/>/api/logs, /api/cities,<br/>/api/weather/history, /api/weather/readings]
+        API["MVC API controllers<br/>/api/logs, /api/logs/{id}, /api/cities,<br/>/api/weather/history, /api/weather/readings"]
         SPA[React + TypeScript SPA<br/>served from wwwroot]
     end
     DB[(SQL Server / Azure SQL<br/>FetchAttempts, WeatherSnapshots)]
 
     F -- "HTTP, 3 cities in parallel" --> OWM
-    F -- "EF Core: attempt + snapshot" --> DB
-    P -- "EF Core: delete > 90 days" --> DB
+    F -- "EF Core: migrations on start;<br/>every attempt, snapshot on success" --> DB
+    P -- "EF Core: batched delete<br/>older than 90 days" --> DB
     API -- "EF Core: read-only queries" --> DB
     SPA -- "fetch JSON" --> API
 ```
