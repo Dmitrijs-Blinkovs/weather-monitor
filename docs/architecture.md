@@ -178,7 +178,8 @@ small and never block the minute-by-minute inserts for long ([ADR 0014](adr/0014
 | `GET /api/weather/readings?from&to&page&pageSize` | `WeatherController` -> `IWeatherReadingsReader.GetPageAsync` | every successful fetch, newest first; range as for history; `page` 1-1,000; `pageSize` 1-200 (default 50); cached 10 s |
 | `GET /health/live` | health checks (none) | liveness: the process answers; App Service probe; not subject to the per-client rate limit |
 | `GET /health` | health checks tagged `ready` | database reachable (`Unhealthy`/503 otherwise) and a successful fetch within 10 minutes (`Degraded` otherwise) |
-| `GET /openapi/v1.json` | OpenAPI (development only) | |
+| `GET /openapi/v1.json` | OpenAPI (development only) | titled "Weather Monitor API"; endpoint descriptions from the controllers' XML comments |
+| `GET /scalar` | Scalar API reference (development only) | reads `/openapi/v1.json`; its own CSP allows inline code under this path only, no Scalar cloud features or telemetry |
 | `GET/HEAD /api/*` (unknown) | minimal endpoint | `404` problem details - never the SPA; a wrong verb on a known route gets `405` |
 | anything else | `MapFallbackToFile("/index.html")` | client-side routes of the SPA |
 
@@ -256,7 +257,8 @@ src/
   pass axe-core WCAG 2 A/AA in light and dark mode (checked by the Playwright suite).
 - **Language:** English only. Dates and numbers are formatted with a fixed English locale (`UI_LOCALE = 'en-GB'`,
   24-hour clock) in the viewer's time zone; the native date-time inputs follow the browser's own locale.
-- **CSP:** no inline scripts or styles are needed; `vite preview` serves the same headers as the server
+- **CSP:** the app needs no inline scripts or styles (only the development-only API reference at `/scalar` gets an
+  exception, `SecurityHeaders.ApiReferenceContentSecurityPolicy`); `vite preview` serves the same headers as the server
   (`vite.config.ts`), so the Playwright suite fails on any CSP violation.
 - **Dev serving:** `npm run dev` (Vite on `127.0.0.1:5173`: IPv4 on purpose, because Node binds `localhost` to `::1`
   only, which hangs where IPv6 loopback is blocked) is started by the ASP.NET Core SPA proxy; Vite proxies `/api` and
@@ -304,7 +306,7 @@ an out-of-range retention stops the host with a message that says what to set.
 |---|---|---|
 | Application.Tests | domain invariants (`FetchAttempt`, `CurrentWeather`) and error-text sanitising; query and paging limits; the dependency rule; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
 | Infrastructure.Tests | the data-model contract (every text column has the length the domain validates, datetime2, float, char(2)); OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
-| Web.Tests | controllers depend only on Application ports; routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression | `WebApplicationFactory` with substituted ports and a temporary web root |
+| Web.Tests | controllers depend only on Application ports; routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression, the development-only OpenAPI document and Scalar reference with their CSP | `WebApplicationFactory` with substituted ports and a temporary web root |
 | Functions.Tests | both timer bindings (every minute, daily; not on startup), the shipped configuration (cities, retention), delegation and failure propagation | reflection on the binding attributes; the real `appsettings.json` |
 | client (Vitest) | date-range rules and rounding, English formatting, chart shaping, downsampling, tooltip, filters, the readings and log tables, the attempt-details dialog, paging cap, error boundary, both pages against a fake API | Testing Library, jsdom |
 | client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), readings table/paging, log filters/paging, attempt details, error state, English UI in a Latvian browser, accessibility, no CSP violations | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |

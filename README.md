@@ -18,7 +18,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 193 .NET tests (xUnit v3), 66 front-end unit/component tests (Vitest), 21 browser tests (Playwright) |
+| Unit tests | 197 .NET tests (xUnit v3), 66 front-end unit/component tests (Vitest), 21 browser tests (Playwright) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -244,7 +244,8 @@ dotnet run --project src/WeatherMonitor.Functions
 dotnet run --project src/WeatherMonitor.Web --launch-profile https
 ```
 
-Then open <https://localhost:7180>. Within a minute the fetch log shows the first three attempts. Step-by-step
+Then open <https://localhost:7180>. Within a minute the fetch log shows the first three attempts. The API reference is
+at <https://localhost:7180/scalar>. Step-by-step
 instructions, verification and troubleshooting: [docs/getting-started.md](docs/getting-started.md).
 
 ## Tests
@@ -304,7 +305,8 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 Invalid queries return `400` with an RFC 7807 `application/problem+json` body; unknown API routes return `404`, a wrong
 HTTP method `405`, more than `RateLimiting:PermitsPerMinute` requests per client `429` with `Retry-After`. Responses are
 cached briefly on the server (history 60 s, log and readings 10 s, attempt details and cities 5 min). In development the OpenAPI document is served at
-`/openapi/v1.json`.
+`/openapi/v1.json` and an interactive API reference ([Scalar](https://scalar.com)) at `/scalar`, with the descriptions taken from the
+controllers' XML comments; neither exists outside development.
 
 ## Configuration
 

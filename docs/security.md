@@ -27,7 +27,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | A02 Cryptographic failures | OK | HTTPS only with HSTS (1 year), TLS 1.3 on the web app, TLS 1.2 elsewhere; `BaseUrl` must be https; SQL encrypted in transit (and at rest by the Azure SQL default, TDE); the only secret is in Key Vault. |
 | A03 Injection | OK | EF Core LINQ only; the single raw statement (read-only grant) is parameterised and uses `QUOTENAME`; React escapes all output; strict CSP; control characters stripped from stored error texts (log forging). |
 | A04 Insecure design | OK | Failure isolation per city, validated configuration, caps on every input, retention purge (ADR 0014), cancellation-safe logging. |
-| A05 Security misconfiguration | OK | Security headers on every response including 500s; OpenAPI only in development; RFC 7807 errors without details; `AllowedHosts` restricted in Azure; FTP/basic-auth publishing disabled. |
+| A05 Security misconfiguration | OK | Security headers on every response including 500s; OpenAPI and the Scalar API reference only in development (their relaxed CSP, inline code allowed, applies under `/scalar` in development only); RFC 7807 errors without details; `AllowedHosts` restricted in Azure; FTP/basic-auth publishing disabled. |
 | A06 Vulnerable and outdated components | OK | NuGet Audit (direct + transitive) fails the build on high/critical; `npm audit --omit=dev --audit-level=high` in CI; Dependabot weekly with a 3-day cooldown. |
 | A07 Identification and authentication failures | n/a / OK | No user accounts; services authenticate with managed identities (no stored credentials). |
 | A08 Software and data integrity failures | OK | Lockfile + `npm ci`, CPM, actions pinned to commit SHAs, checkout without persisted credentials, OIDC deployments, build job without credentials, environment approval. |
@@ -45,7 +45,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | API6 Unrestricted access to sensitive business flows | n/a | No business flows. |
 | API7 Server-side request forgery | OK | See A10. |
 | API8 Security misconfiguration | OK | See A05; unknown `/api/*` routes return 404, wrong verbs 405. |
-| API9 Improper inventory management | OK | One API version, documented in the README; OpenAPI only in development. |
+| API9 Improper inventory management | OK | One API version, documented in the README and, in development, in the OpenAPI document and its Scalar reference. |
 | API10 Unsafe consumption of APIs | OK | 64 KB response cap, `application/json` required, required fields and plausible temperatures validated, error texts redacted and sanitised, bounded retries/timeouts and a tuned circuit breaker. |
 
 ## OWASP Top 10 CI/CD Security Risks
@@ -72,7 +72,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 ## Implementation pointers
 
 - Headers: `src/WeatherMonitor.Web/Security/SecurityHeaders.cs` (mirrored for the browser tests in
-  `src/weather-monitor.client/vite.config.ts`); tests: `SecurityTests`, Playwright "strict content security policy".
+  `src/weather-monitor.client/vite.config.ts`); tests: `SecurityTests`, `ApiReferenceTests`, Playwright "strict content security policy".
 - Rate limiting: `src/WeatherMonitor.Web/Security/ApiRateLimiting.cs` (`RateLimiting:PermitsPerMinute`); caching and
   compression: `src/WeatherMonitor.Web/Caching/ApiCaching.cs`.
 - Key handling: `OpenWeatherMapClient` (`Redact`), `AddOpenWeatherMap` (`RemoveAllLoggers`, response cap),

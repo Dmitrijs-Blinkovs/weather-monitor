@@ -108,7 +108,7 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https # https://loc
 dotnet ef migrations add <Name> --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --output-dir Persistence/Migrations
 ```
 
-Local endpoints: Web `https://localhost:7180` / `http://localhost:5180`, Vite `http://127.0.0.1:5173`, Functions host
+Local endpoints: Web `https://localhost:7180` / `http://localhost:5180` (API reference `/scalar`), Vite `http://127.0.0.1:5173`, Functions host
 `http://localhost:7071`, Azurite `10000-10002`, database `(localdb)\MSSQLLocalDB` / `WeatherMonitor`.
 Health: `http://localhost:5180/health/live` (process) and `/health` (`Degraded` until the first successful fetch).
 Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWeather` (or `PurgeOldData`) with body
@@ -188,7 +188,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
   Server, not only SQLite: the tests prove results, not plans.
 - Output-cache locking (request coalescing) is off on purpose: with it, a request that waits for an identical one
   inherits that request's cancellation and returns 500 when the browser aborts the first (React StrictMode always does).
-- The CSP is defined twice: `Web/Security/SecurityHeaders.cs` (production) and `vite.config.ts` (`vite preview` for
+- The CSP is defined twice: `Web/Security/SecurityHeaders.cs` (production; the development-only `/scalar` page has its
+  own, `ApiReferenceContentSecurityPolicy`) and `vite.config.ts` (`vite preview` for
   Playwright). Change both; inline `<script>`/`style=""` attributes violate it (React `style` props are fine).
 - `PageLimits.MaxPage` (Application) and `MAX_PAGE` (client `components/Pagination.tsx`) must stay equal.
 - `/health` is rate-limited and depends on data freshness; probes that only need "process alive" use `/health/live`.
