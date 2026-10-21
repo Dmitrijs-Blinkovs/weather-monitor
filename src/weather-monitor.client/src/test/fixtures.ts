@@ -1,6 +1,13 @@
 import { vi } from 'vitest';
 import type { WeatherApi } from '../api/weatherApi';
-import type { CityTemperatureSeries, FetchLogEntry, PagedResult, WeatherHistory } from '../api/types';
+import type {
+  CityTemperatureSeries,
+  FetchAttemptDetails,
+  FetchLogEntry,
+  PagedResult,
+  WeatherHistory,
+  WeatherReading,
+} from '../api/types';
 
 export function series(overrides: Partial<CityTemperatureSeries> = {}): CityTemperatureSeries {
   return {
@@ -29,8 +36,25 @@ export function logEntry(overrides: Partial<FetchLogEntry> = {}): FetchLogEntry 
     attemptedAtUtc: '2026-10-19T11:59:00Z',
     isSuccess: true,
     httpStatusCode: 200,
-    errorMessage: null,
     durationMs: 142,
+    ...overrides,
+  };
+}
+
+export function attemptDetails(overrides: Partial<FetchAttemptDetails> = {}): FetchAttemptDetails {
+  return { ...logEntry(), errorMessage: null, responseBody: '{"name":"London","main":{"temp":9.5}}', ...overrides };
+}
+
+export function reading(overrides: Partial<WeatherReading> = {}): WeatherReading {
+  return {
+    id: 1,
+    fetchedAtUtc: '2026-10-19T11:59:00Z',
+    city: 'Riga',
+    country: 'LV',
+    temperature: 7.4,
+    temperatureMin: 6.8,
+    temperatureMax: 8,
+    observedAtUtc: '2026-10-19T11:50:00Z',
     ...overrides,
   };
 }
@@ -43,7 +67,9 @@ export function page<T>(items: T[], totalCount = items.length, pageNumber = 1, p
 export function fakeApi(overrides: Partial<WeatherApi> = {}): WeatherApi {
   return {
     getHistory: vi.fn().mockResolvedValue(history([])),
+    getReadings: vi.fn().mockResolvedValue(page([])),
     getFetchLog: vi.fn().mockResolvedValue(page([])),
+    getFetchAttempt: vi.fn().mockResolvedValue(attemptDetails()),
     getCities: vi.fn().mockResolvedValue(['London', 'Riga', 'Rome']),
     ...overrides,
   };

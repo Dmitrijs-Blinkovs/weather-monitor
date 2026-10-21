@@ -58,7 +58,7 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void The_web_host_can_resolve_the_history_service()
+    public void The_web_host_can_resolve_the_history_service_and_the_readings_reader()
     {
         var configuration = Configuration(new() { ["ConnectionStrings:WeatherDb"] = "Server=unused" });
         using var provider = new ServiceCollection()
@@ -68,6 +68,7 @@ public sealed class CompositionTests
         using var scope = provider.CreateScope();
 
         scope.ServiceProvider.GetRequiredService<IWeatherHistoryService>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<IWeatherReadingsReader>().ShouldNotBeNull();
     }
 
     [Theory]

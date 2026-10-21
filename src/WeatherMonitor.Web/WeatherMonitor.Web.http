@@ -9,11 +9,17 @@ GET {{Web}}/api/logs?page=1&pageSize=10
 ### Fetch log - failures for one city
 GET {{Web}}/api/logs?city=Rome&status=Failure
 
+### One attempt with its full response body (payload of a success, body of a failure)
+GET {{Web}}/api/logs/1
+
 ### Cities seen so far
 GET {{Web}}/api/cities
 
 ### Temperature history for a period (ISO 8601 with offset)
 GET {{Web}}/api/weather/history?from=2026-10-19T00:00:00Z&to=2026-10-20T00:00:00Z
+
+### Every successful fetch in a period, newest first (one row per city per minute)
+GET {{Web}}/api/weather/readings?from=2026-10-19T00:00:00Z&to=2026-10-20T00:00:00Z&page=1&pageSize=50
 
 ### Invalid: 'from' after 'to' -> 400 problem details
 GET {{Web}}/api/weather/history?from=2026-10-20T00:00:00Z&to=2026-10-19T00:00:00Z

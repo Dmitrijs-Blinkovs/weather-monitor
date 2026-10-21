@@ -1,4 +1,5 @@
 using WeatherMonitor.Application.FetchLog;
+using WeatherMonitor.Application.Paging;
 using WeatherMonitor.Infrastructure.Persistence;
 
 namespace WeatherMonitor.Infrastructure.Tests.Persistence;
@@ -51,7 +52,7 @@ public sealed class FetchLogReaderTests : SqliteTestDatabase
         var page = await ReadAsync(new FetchLogQuery(1, 50, status: FetchStatus.Failure));
 
         page.Items.Select(entry => entry.City).ShouldBe(["Rome", "London"]);
-        page.Items.ShouldAllBe(entry => !entry.IsSuccess && entry.ErrorMessage == "Server error" && entry.HttpStatusCode == 500);
+        page.Items.ShouldAllBe(entry => !entry.IsSuccess && entry.HttpStatusCode == 500);
     }
 
     [Fact]
@@ -73,6 +74,52 @@ public sealed class FetchLogReaderTests : SqliteTestDatabase
         var cities = await new FetchLogReader(context).GetCitiesAsync(TestContext.Current.CancellationToken);
 
         cities.ShouldBe(["London", "Riga", "Rome"]);
+    }
+
+    [Fact]
+    public async Task The_details_of_a_success_carry_the_full_payload_from_its_snapshot()
+    {
+        var attempt = Success("Riga", Now.AddMinutes(1));
+        await SeedAsync(attempt);
+
+        var details = await ReadDetailsAsync(attempt.Id);
+
+        details.ShouldNotBeNull();
+        (details.City, details.IsSuccess, details.HttpStatusCode, details.ErrorMessage).ShouldBe(("Riga", true, 200, null));
+        details.AttemptedAtUtc.ShouldBe(Now.AddMinutes(1));
+        details.AttemptedAtUtc.Kind.ShouldBe(DateTimeKind.Utc);
+        details.ResponseBody.ShouldBe("{}");
+    }
+
+    [Fact]
+    public async Task The_details_of_a_failure_carry_the_full_error_and_the_body_received()
+    {
+        var error = new string('x', 300);
+        var attempt = Domain.FetchAttempt.Failed(
+            "Rome", Now.AddMinutes(1), TimeSpan.FromMilliseconds(80), 401, error, """{"cod":401}""");
+        var timeout = Domain.FetchAttempt.Failed("Rome", Now.AddMinutes(2), TimeSpan.FromSeconds(10), null, "Timed out");
+        await SeedAsync(attempt, timeout);
+
+        var details = await ReadDetailsAsync(attempt.Id);
+        var timeoutDetails = await ReadDetailsAsync(timeout.Id);
+
+        details.ShouldNotBeNull();
+        (details.IsSuccess, details.HttpStatusCode, details.ErrorMessage).ShouldBe((false, 401, error));
+        details.ResponseBody.ShouldBe("""{"cod":401}""");
+        timeoutDetails.ShouldNotBeNull();
+        timeoutDetails.ResponseBody.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task An_unknown_attempt_has_no_details()
+    {
+        (await ReadDetailsAsync(long.MaxValue)).ShouldBeNull();
+    }
+
+    private async Task<FetchAttemptDetailsDto?> ReadDetailsAsync(long id)
+    {
+        await using var context = CreateContext();
+        return await new FetchLogReader(context).GetDetailsAsync(id, TestContext.Current.CancellationToken);
     }
 
     private async Task<PagedResult<FetchLogEntryDto>> ReadAsync(FetchLogQuery query)

@@ -26,4 +26,19 @@ describe('CitySummaryCards', () => {
 
     expect(within(cards[1]!).getByText('18.2 °C')).toBeInTheDocument();
   });
+
+  it('keeps the alphabetical order of the cities, whatever their temperature', () => {
+    render(
+      <CitySummaryCards
+        cities={[
+          series({ city: 'London', country: 'GB', latestTemperature: 9.7 }),
+          series({ city: 'Riga', country: 'LV', latestTemperature: 6 }),
+          series({ city: 'Rome', country: 'IT', latestTemperature: 18.3 }),
+        ]}
+        allCities={['London', 'Riga', 'Rome']}
+      />,
+    );
+
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['London', 'Riga', 'Rome']);
+  });
 });

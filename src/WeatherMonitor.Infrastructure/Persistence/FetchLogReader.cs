@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WeatherMonitor.Application.FetchLog;
+using WeatherMonitor.Application.Paging;
 
 namespace WeatherMonitor.Infrastructure.Persistence;
 
@@ -49,12 +50,27 @@ internal sealed class FetchLogReader(WeatherDbContext dbContext) : IFetchLogRead
                 attempt.AttemptedAtUtc,
                 attempt.IsSuccess,
                 attempt.HttpStatusCode,
-                attempt.ErrorMessage,
                 attempt.DurationMs))
             .ToListAsync(cancellationToken);
 
         return new PagedResult<FetchLogEntryDto>(items, query.Page, query.PageSize, totalCount);
     }
+
+    public Task<FetchAttemptDetailsDto?> GetDetailsAsync(long id, CancellationToken cancellationToken) =>
+        dbContext.FetchAttempts
+            .AsNoTracking()
+            .Where(attempt => attempt.Id == id)
+            .Select(attempt => new FetchAttemptDetailsDto(
+                attempt.Id,
+                attempt.City,
+                attempt.AttemptedAtUtc,
+                attempt.IsSuccess,
+                attempt.HttpStatusCode,
+                attempt.ErrorMessage,
+                attempt.DurationMs,
+                // A success keeps its payload in the snapshot, a failure the body it got on the attempt itself.
+                attempt.IsSuccess ? attempt.Snapshot!.RawPayload : attempt.ResponseBody))
+            .SingleOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<string>> GetCitiesAsync(CancellationToken cancellationToken) =>
         await dbContext.FetchAttempts

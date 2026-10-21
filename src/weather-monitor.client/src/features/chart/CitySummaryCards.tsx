@@ -7,6 +7,7 @@ interface CitySummaryCardsProps {
   allCities: readonly string[];
 }
 
+/** One card per city in the API's order (alphabetical), the same order as the legend and the tooltip rows. */
 export function CitySummaryCards({ cities, allCities }: CitySummaryCardsProps) {
   return (
     <ul className="city-cards" aria-label="Cities in the selected period">

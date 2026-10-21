@@ -4,9 +4,11 @@ import { formatDateTimeWithSeconds } from '../../lib/format';
 
 interface FetchLogTableProps {
   entries: readonly FetchLogEntry[];
+  /** Opens what was stored for an attempt: the payload of a success, the error and body of a failure. */
+  onShowDetails: (entry: FetchLogEntry) => void;
 }
 
-export function FetchLogTable({ entries }: FetchLogTableProps) {
+export function FetchLogTable({ entries, onShowDetails }: FetchLogTableProps) {
   if (entries.length === 0) {
     return <p className="empty-state">No fetch attempts match these filters yet.</p>;
   }
@@ -26,7 +28,7 @@ export function FetchLogTable({ entries }: FetchLogTableProps) {
             <th scope="col" className="numeric">
               Duration
             </th>
-            <th scope="col">Error</th>
+            <th scope="col">Response</th>
           </tr>
         </thead>
         <tbody>
@@ -41,7 +43,11 @@ export function FetchLogTable({ entries }: FetchLogTableProps) {
               </td>
               <td className="numeric">{entry.httpStatusCode ?? '—'}</td>
               <td className="numeric">{entry.durationMs} ms</td>
-              <td className="data-table__error">{entry.errorMessage}</td>
+              <td>
+                <button type="button" className="button button--small" onClick={() => onShowDetails(entry)}>
+                  {entry.isSuccess ? 'Payload' : 'Details'}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

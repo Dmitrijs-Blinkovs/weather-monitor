@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using WeatherMonitor.Application.FetchLog;
+using WeatherMonitor.Application.Paging;
 
 namespace WeatherMonitor.Web.Tests.Api;
 
@@ -22,7 +23,7 @@ public sealed class LogsApiTests : IAsyncDisposable
         _factory.FetchLogReader
             .GetPageAsync(Arg.Any<FetchLogQuery>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResult<FetchLogEntryDto>(
-                [new FetchLogEntryDto(7, "Riga", attemptedAt, false, 503, "Service Unavailable", 812)], 1, 50, 1));
+                [new FetchLogEntryDto(7, "Riga", attemptedAt, false, 503, 812)], 1, 50, 1));
 
         using var response = await _factory.CreateClient().GetAsync("/api/logs", TestContext.Current.CancellationToken);
 
@@ -33,6 +34,7 @@ public sealed class LogsApiTests : IAsyncDisposable
         entry.GetProperty("attemptedAtUtc").GetString().ShouldBe("2026-10-19T09:30:00Z");
         entry.GetProperty("isSuccess").GetBoolean().ShouldBeFalse();
         entry.GetProperty("httpStatusCode").GetInt32().ShouldBe(503);
+        entry.TryGetProperty("errorMessage", out _).ShouldBeFalse(); // loaded per attempt, never with the list
         json.RootElement.GetProperty("totalPages").GetInt32().ShouldBe(1);
     }
 
@@ -72,6 +74,45 @@ public sealed class LogsApiTests : IAsyncDisposable
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
         await _factory.FetchLogReader.DidNotReceive()
             .GetPageAsync(Arg.Any<FetchLogQuery>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Returns_one_attempt_with_its_response_body()
+    {
+        var attemptedAt = new DateTime(2026, 10, 19, 9, 30, 0, DateTimeKind.Utc);
+        _factory.FetchLogReader.GetDetailsAsync(7, Arg.Any<CancellationToken>())
+            .Returns(new FetchAttemptDetailsDto(7, "Rome", attemptedAt, false, 401, "Invalid API key", 95, """{"cod":401}"""));
+
+        using var response = await _factory.CreateClient().GetAsync("/api/logs/7", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        json.RootElement.GetProperty("id").GetInt64().ShouldBe(7);
+        json.RootElement.GetProperty("attemptedAtUtc").GetString().ShouldBe("2026-10-19T09:30:00Z");
+        json.RootElement.GetProperty("errorMessage").GetString().ShouldBe("Invalid API key");
+        json.RootElement.GetProperty("responseBody").GetString().ShouldBe("""{"cod":401}""");
+    }
+
+    [Fact]
+    public async Task An_unknown_attempt_is_a_404_problem()
+    {
+        using var response = await _factory.CreateClient().GetAsync("/api/logs/42", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("abc")]
+    [InlineData("99999999999999999999")]
+    public async Task An_attempt_id_that_is_not_a_positive_number_is_not_found_without_asking_the_reader(string id)
+    {
+        using var response = await _factory.CreateClient().GetAsync($"/api/logs/{id}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        await _factory.FetchLogReader.DidNotReceive().GetDetailsAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

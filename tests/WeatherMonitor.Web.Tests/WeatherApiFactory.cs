@@ -27,6 +27,8 @@ public sealed class WeatherApiFactory : WebApplicationFactory<Program>
 
     public IWeatherHistoryService HistoryService { get; } = Substitute.For<IWeatherHistoryService>();
 
+    public IWeatherReadingsReader ReadingsReader { get; } = Substitute.For<IWeatherReadingsReader>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Not "Development": that environment would point at LocalDB and apply migrations.
@@ -36,6 +38,7 @@ public sealed class WeatherApiFactory : WebApplicationFactory<Program>
         {
             services.AddSingleton(FetchLogReader);
             services.AddSingleton(HistoryService);
+            services.AddSingleton(ReadingsReader);
         });
     }
 

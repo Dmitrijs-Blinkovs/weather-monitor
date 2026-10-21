@@ -16,6 +16,15 @@ test('the root opens the temperature page and the header switches between pages'
   await expect(page.getByRole('heading', { level: 1, name: 'Temperature' })).toBeVisible();
 });
 
+test('every page names its author in the footer', async ({ page }) => {
+  await mockApi(page);
+
+  for (const path of ['/temperature', '/fetch-log']) {
+    await page.goto(path);
+    await expect(page.getByRole('contentinfo')).toHaveText('Designed and built by Dmitrijs Bļinkovs');
+  }
+});
+
 test('a deep link opens the page directly', async ({ page }) => {
   await mockApi(page);
   await page.goto('/fetch-log');

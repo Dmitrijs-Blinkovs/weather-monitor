@@ -5,7 +5,7 @@ description: Start the whole Weather Monitor stack on this machine (Azurite, Azu
 
 # Run Weather Monitor locally
 
-Goal: Functions fetches 3 cities every minute into LocalDB, and the UI at http://localhost:5173 shows them.
+Goal: Functions fetches 3 cities every minute into LocalDB, and the UI at http://127.0.0.1:5173 shows them.
 
 ## 1. Preconditions (stop and tell the user if one fails)
 
@@ -50,7 +50,7 @@ instance is running - find it before starting a second one.
   $t = New-Object Data.DataTable; $t.Load($q.ExecuteReader()); $c.Close(); $t
   ```
   Expect London GB, Riga LV, Rome IT. A wrong country means a missing or wrong `CountryCode` (ADR 0005).
-- Browser: open http://localhost:5180/ (redirects to 5173), check **Temperature** and **Fetch log**, and the console has
+- Browser: open http://localhost:5180/ (redirects to http://127.0.0.1:5173), check **Temperature** and **Fetch log**, and the console has
   no errors besides StrictMode's aborted duplicate requests in development.
 
 ## 4. Stop
@@ -70,7 +70,6 @@ Stop the background processes you started (Web stops Vite with it). Leave proces
 - Typing a deep link on port 5180 returns 404 in development; navigate from `/` or use port 5173.
 - The chart gets a new point only when the provider updates an observation (~every 10 minutes).
 - Rebuilding while hosts run fails with locked DLLs (MSB3026/MSB3027) - stop the hosts first.
-- When the Web host runs as a background process, the Vite instance the SPA proxy launches can hang (listens on 5173,
-  answers nothing; `/health` on 5180 then hangs too, log: `Unable to connect to the SPA development server`). Reliable
-  order for background runs: start Vite yourself first (`ASPNETCORE_URLS=http://localhost:5180`, then `npm run dev` in
-  `src/weather-monitor.client`), wait for 5173 to answer, then start the Web host - the proxy reuses the running Vite.
+- `Unable to connect to the SPA development server` with Vite running: check that it listens on `127.0.0.1:5173`.
+  On `localhost` Node binds IPv6 `::1` only, and where IPv6 loopback is blocked (VPN or security software) every
+  connection to it hangs; `vite.config.ts` and `SpaProxyServerUrl` therefore use `127.0.0.1`.

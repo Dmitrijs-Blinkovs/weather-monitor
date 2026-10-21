@@ -1,6 +1,6 @@
 namespace WeatherMonitor.Application.History;
 
-/// <summary>Validation rules for a history request, shared by the API and the service.</summary>
+/// <summary>Validation rules for a time range (history and readings), shared by the API and the use cases.</summary>
 public static class WeatherHistoryRules
 {
     public static readonly TimeSpan MaxRange = TimeSpan.FromDays(31);

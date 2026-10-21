@@ -23,12 +23,18 @@ const securityHeaders = {
   'Cross-Origin-Resource-Policy': 'same-origin',
 };
 
+// Node binds "localhost" to IPv6 ::1 only. Where IPv6 loopback is blocked (VPN or security software), connections to
+// ::1 hang and the SPA proxy and Playwright never reach Vite; IPv4 loopback works everywhere.
+const host = '127.0.0.1';
+
 export default defineConfig({
   plugins: [react()],
   preview: {
+    host,
     headers: securityHeaders,
   },
   server: {
+    host,
     port: 5173,
     strictPort: true,
     proxy: {

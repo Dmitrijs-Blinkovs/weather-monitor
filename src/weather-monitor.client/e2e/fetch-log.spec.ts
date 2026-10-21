@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mockApi } from './support/mockApi';
 
 test.describe('Fetch log page', () => {
-  test('lists attempts newest first with result, HTTP status, duration and error', async ({ page }) => {
+  test('lists attempts newest first with result, HTTP status and duration', async ({ page }) => {
     await mockApi(page);
     await page.goto('/fetch-log');
 
@@ -16,7 +16,7 @@ test.describe('Fetch log page', () => {
     const failed = rows.filter({ hasText: 'Rome' }).first();
     await expect(failed).toContainText('Failed');
     await expect(failed).toContainText('401');
-    await expect(failed).toContainText('Invalid API key');
+    await expect(failed.getByRole('button', { name: 'Details' })).toBeVisible();
     await expect(page.getByText('Page 1 of 3 · 60 attempts')).toBeVisible();
   });
 
@@ -48,6 +48,29 @@ test.describe('Fetch log page', () => {
     expect(api.logRequests().at(-1)!.searchParams.get('page')).toBe('3');
   });
 
+  test('loads the full payload or error of an attempt only on request', async ({ page }) => {
+    const api = await mockApi(page);
+    await page.goto('/fetch-log');
+    await expect(page.getByRole('table')).toBeVisible();
+    expect(api.attemptRequests()).toHaveLength(0);
+
+    await page.getByRole('row').filter({ hasText: 'Rome' }).first().getByRole('button', { name: 'Details' }).click();
+
+    const dialog = page.getByRole('dialog', { name: /Error details · Rome/ });
+    await expect(dialog).toContainText('Invalid API key. Please see https://openweathermap.org/faq#error401');
+    await expect(dialog.getByLabel('Response body')).toContainText('"cod": 401');
+    expect(api.attemptRequests()).toHaveLength(1);
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+
+    await page.getByRole('row').filter({ hasText: 'London' }).first().getByRole('button', { name: 'Payload' }).click();
+    const payload = page.getByRole('dialog', { name: /Payload · London/ });
+    await expect(payload.getByLabel('Response body')).toContainText('"temp": 11.5');
+    await payload.getByRole('button', { name: 'Close' }).click();
+    await expect(payload).toBeHidden();
+  });
+
   test('shows an error with a retry button when the API fails', async ({ page }) => {
     await mockApi(page, { logsStatus: 503 });
     await page.goto('/fetch-log');
@@ -65,6 +88,12 @@ test.describe('Fetch log page', () => {
 
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
       expect(results.violations).toEqual([]);
+
+      await page.getByRole('button', { name: 'Payload' }).first().click();
+      await expect(page.getByRole('dialog').getByLabel('Response body')).toBeVisible();
+
+      const dialogResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+      expect(dialogResults.violations).toEqual([]);
     });
   }
 });

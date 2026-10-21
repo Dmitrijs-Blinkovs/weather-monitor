@@ -20,6 +20,7 @@ The original assignment and how each requirement is met: [README.md](README.md).
 | [docs/debugging-in-visual-studio.md](docs/debugging-in-visual-studio.md) | you run and debug manually in Visual Studio 2026 |
 | [docs/deployment.md](docs/deployment.md) | you deploy to Azure or touch `infra/`, `azure.yaml` or the workflows |
 | [docs/security.md](docs/security.md) | you touch the HTTP pipeline, inputs, outbound calls, identities, secrets or pipelines |
+| [docs/performance.md](docs/performance.md) | you change a query, an index, a limit or the chart data - re-run the load test (`tools/load-test`) |
 | [.claude/skills/](.claude/skills) | you do a routine task - each skill is a step-by-step runbook any agent can follow |
 
 ## Repository map
@@ -36,8 +37,10 @@ src/
     Ingestion/                      WeatherIngestionService (fetch all cities in parallel, store attempts), options,
                                     IngestionMetrics (OpenTelemetry meter "WeatherMonitor.Ingestion")
     Retention/                      DataRetentionService (batched purge of old history), options
-    FetchLog/                       IFetchLogReader + DTOs (paged log, cities)
-    History/                        WeatherHistoryService (series + per-city summary), IWeatherHistoryReader, rules
+    FetchLog/                       IFetchLogReader + DTOs (paged log, attempt details with body, cities)
+    History/                        WeatherHistoryService (series + per-city summary), IWeatherHistoryReader, rules;
+                                    IWeatherReadingsReader (every fetch, paged)
+    Paging/                         PageLimits (page 1-1,000, size 1-200), PagedResult<T>
   WeatherMonitor.Infrastructure/  Adapters:
     Persistence/                    WeatherDbContext, configurations, Migrations/, repository, readers,
                                     DatabaseMigrationService (+ read-only grant), DataFreshnessHealthCheck
@@ -51,6 +54,7 @@ src/
                                   vite.config.ts mirrors the server's security headers for `vite preview`.
 tests/
   WeatherMonitor.<Project>.Tests/ One test project per production project (xUnit v3, Shouldly, NSubstitute).
+tools/load-test/                  Load test: seed a separate LoadTest database with N days, run a second API, measure.
 infra/                            Bicep: main.bicep (resource group) + resources.bicep (everything else);
                                   bicepconfig.json = strict linter rules, API versions at most two years old.
 azure.yaml                        Azure Developer CLI services: web -> App Service, functions -> Flex Consumption.
@@ -66,14 +70,15 @@ azure.yaml                        Azure Developer CLI services: web -> App Servi
   `AddOpenWeatherMap`).
 - **Write path:** timer -> `WeatherIngestionService` -> `IWeatherProvider` (one call per city, in parallel) ->
   `FetchAttempt.Succeeded/Failed` -> `IFetchAttemptRepository.AddRangeAsync` (one transaction for the run).
-- **Read path:** controller -> `IFetchLogReader` / `IWeatherHistoryService` -> EF Core projections (no tracking, no payload).
+- **Read path:** controller -> `IFetchLogReader` / `IWeatherHistoryService` / `IWeatherReadingsReader` -> EF Core
+  projections (no tracking, no payload).
 - **Expected failures are values, not exceptions:** the provider returns `WeatherFetchResult.Failure(...)`; only bugs throw.
 - **Domain and data model describe the same data:** EF configurations use the domain's constants, and
   `DataModelContractTests` fails when a text column's length and its domain rule drift apart (or a new text column has
   no decided length). Metrics count *stored* attempts, so a failing database also triggers the data alert.
 - **Business rules live in the model:** invariants in Domain (`FetchAttempt`, `CurrentWeather` - plausibility, country,
-  status codes), use-case rules in Application (`WeatherHistoryRules`, `FetchLogQuery` limits). Adapters
-  (`CurrentWeather.TryCreate`) and request models (`[Range(1, FetchLogQuery.MaxPage)]`) reuse them, never copy them.
+  status codes), use-case rules in Application (`WeatherHistoryRules`, `PageLimits`). Adapters
+  (`CurrentWeather.TryCreate`) and request models (`[Range(1, PageLimits.MaxPage)]`) reuse them, never copy them.
   `DependencyRuleTests` and `ArchitectureTests` fail if a layer reaches outwards.
 - **Time is UTC everywhere** (`DateTime` with `Kind=Utc`, `...Utc` suffix); an EF converter restores the kind on read
   and rejects `Kind=Unspecified`, also in query parameters.
@@ -101,7 +106,7 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https # https://loc
 dotnet ef migrations add <Name> --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure --output-dir Persistence/Migrations
 ```
 
-Local endpoints: Web `https://localhost:7180` / `http://localhost:5180`, Vite `http://localhost:5173`, Functions host
+Local endpoints: Web `https://localhost:7180` / `http://localhost:5180`, Vite `http://127.0.0.1:5173`, Functions host
 `http://localhost:7071`, Azurite `10000-10002`, database `(localdb)\MSSQLLocalDB` / `WeatherMonitor`.
 Health: `http://localhost:5180/health/live` (process) and `/health` (`Degraded` until the first successful fetch).
 Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWeather` (or `PurgeOldData`) with body
@@ -153,12 +158,15 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - `.gitignore` (VS template) ignores folders named `log`/`logs` - that is why the UI feature folder is `fetch-log`.
 - A deep clone path on Windows breaks the Functions build (`MSB3030 ... WorkerExtensions ... not found`, "Filename too
   long"): the worker extension build nests deep paths. Clone to a short path such as `C:\src\weather-monitor`.
-- A Web host started in the background can leave the SPA-proxy-launched Vite hanging (`Unable to connect to the SPA
-  development server`); start Vite yourself first (`.claude/skills/run-locally`).
+- Vite (`npm run dev`, `vite preview`), the SPA proxy and Playwright use `127.0.0.1`, not `localhost`, on purpose:
+  Node binds `localhost` to IPv6 `::1` only, and where IPv6 loopback is blocked (VPN or security software)
+  connections to `::1` hang - the SPA proxy then logs `Unable to connect to the SPA development server` and
+  Playwright times out waiting for its web server. Keep `server.host`/`preview.host` and `SpaProxyServerUrl` on IPv4.
 - An API contract change must be mirrored in `src/api/types.ts` and in `e2e/support/mockApi.ts`.
 - `q=Rome` resolves to Rome, Georgia, USA. Every city in `Weather:Cities` needs its `CountryCode`.
 - OpenWeatherMap refreshes an observation about every 10 minutes; fetching every minute stores duplicates on purpose.
-  The history reader collapses them with `DISTINCT` - do not "fix" the duplicates in the writer.
+  The history reader collapses them with `DISTINCT` for the chart; the readings table shows them on purpose (proof that
+  each fetch arrived) - do not "fix" the duplicates in the writer.
 - The API key travels in the query string: keep `RemoveAllLoggers()` on the client and `Redact(...)` on messages.
 - `[Produces("application/json")]` on controllers turns RFC 7807 errors into `application/json` - do not add it.
 - Unknown `/api/*` routes must stay 404 (`app.Map("/api/{**path}", ...)` before `MapFallbackToFile`).
@@ -171,14 +179,14 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - A brand-new OpenWeatherMap key returns 401 for up to ~2 hours.
 - Output caching: two identical API requests within the cache window return the same body. Web tests that change the
   substituted data between requests must vary the query (or the test fails for a "wrong" reason).
-- Fetch-log paging is a deferred join (`FetchLogReader`): OFFSET over index keys, then the page's rows. Keep the
-  subquery inside the lambda, or Skip/Take become SQL constants (one plan per page). Check a query change on SQL
+- Fetch-log and readings paging is a deferred join (`FetchLogReader`, `WeatherReadingsReader`): OFFSET over index
+  keys, then the page's rows. Keep the subquery inside the lambda, or Skip/Take become SQL constants (one plan per page). Check a query change on SQL
   Server, not only SQLite: the tests prove results, not plans.
 - Output-cache locking (request coalescing) is off on purpose: with it, a request that waits for an identical one
   inherits that request's cancellation and returns 500 when the browser aborts the first (React StrictMode always does).
 - The CSP is defined twice: `Web/Security/SecurityHeaders.cs` (production) and `vite.config.ts` (`vite preview` for
   Playwright). Change both; inline `<script>`/`style=""` attributes violate it (React `style` props are fine).
-- `FetchLogQuery.MaxPage` (Application) and `MAX_LOG_PAGE` (client `Pagination.tsx`) must stay equal.
+- `PageLimits.MaxPage` (Application) and `MAX_PAGE` (client `components/Pagination.tsx`) must stay equal.
 - `/health` is rate-limited and depends on data freshness; probes that only need "process alive" use `/health/live`.
 - Two managed identities in Azure: the web app can only read the database (`db_datareader`, granted by the function
   after migrating). Anything the web app must write needs a deliberate change (ADR 0015).

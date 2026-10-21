@@ -64,6 +64,10 @@ export function AppShell() {
           </Suspense>
         </ErrorBoundary>
       </main>
+
+      <footer className="app-footer">
+        <p className="app-footer__inner">Designed and built by Dmitrijs Bļinkovs</p>
+      </footer>
     </div>
   );
 }

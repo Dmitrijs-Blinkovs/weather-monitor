@@ -1,3 +1,5 @@
+using WeatherMonitor.Application.Paging;
+
 namespace WeatherMonitor.Application.FetchLog;
 
 public enum FetchStatus
@@ -6,23 +8,12 @@ public enum FetchStatus
     Failure,
 }
 
-/// <summary>One page of the fetch log. The limits are business rules; the API validates against the same constants.</summary>
+/// <summary>One page of the fetch log, within <see cref="PageLimits"/>.</summary>
 public sealed record FetchLogQuery
 {
-    public const int MaxPageSize = 200;
-
-    /// <summary>
-    /// Deepest page that can be requested. Deep OFFSET paging costs the database more with every page; older entries
-    /// are reached by filtering (city, result) instead. Must match MAX_LOG_PAGE in the client.
-    /// </summary>
-    public const int MaxPage = 1000;
-
     public FetchLogQuery(int page, int pageSize, string? city = null, FetchStatus? status = null)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(page, MaxPage);
-        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, MaxPageSize);
+        PageLimits.ThrowIfInvalid(page, pageSize);
 
         Page = page;
         PageSize = pageSize;
@@ -42,16 +33,26 @@ public sealed record FetchLogQuery
     public int Skip => (Page - 1) * PageSize;
 }
 
+/// <summary>One row of the log. The error text and the response body are loaded per attempt (<see cref="FetchAttemptDetailsDto"/>).</summary>
 public sealed record FetchLogEntryDto(
     long Id,
     string City,
     DateTime AttemptedAtUtc,
     bool IsSuccess,
     int? HttpStatusCode,
-    string? ErrorMessage,
     int DurationMs);
 
-public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount)
-{
-    public int TotalPages => PageSize <= 0 ? 0 : (int)Math.Ceiling(TotalCount / (double)PageSize);
-}
+/// <summary>One attempt with everything that was stored for it, loaded on demand (the log list never carries bodies).</summary>
+/// <param name="ResponseBody">
+/// The provider's response as received: the full payload of a successful attempt, or the body of a failed one (with
+/// the API key redacted); null when no response arrived (timeout, network error).
+/// </param>
+public sealed record FetchAttemptDetailsDto(
+    long Id,
+    string City,
+    DateTime AttemptedAtUtc,
+    bool IsSuccess,
+    int? HttpStatusCode,
+    string? ErrorMessage,
+    int DurationMs,
+    string? ResponseBody);

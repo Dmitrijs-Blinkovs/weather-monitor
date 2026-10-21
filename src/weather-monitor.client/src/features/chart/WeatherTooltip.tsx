@@ -10,7 +10,10 @@ interface WeatherTooltipProps {
   colors: readonly string[];
 }
 
-/** Lists every city's observation that was current at the hovered time, not only the cities observed exactly then. */
+/**
+ * Lists every city's observation that was current at the hovered time, not only the cities observed exactly then.
+ * Rows keep the API's alphabetical order, the same as the legend and the city cards.
+ */
 export function WeatherTooltip({ active, time, cities, colors }: WeatherTooltipProps) {
   if (!active || !Number.isFinite(time)) {
     return null;

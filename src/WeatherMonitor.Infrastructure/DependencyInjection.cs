@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IFetchAttemptRepository, FetchAttemptRepository>();
         services.AddScoped<IFetchLogReader, FetchLogReader>();
         services.AddScoped<IWeatherHistoryReader, WeatherHistoryReader>();
+        services.AddScoped<IWeatherReadingsReader, WeatherReadingsReader>();
 
         services.AddOptions<DatabaseOptions>().Bind(configuration.GetSection(DatabaseOptions.SectionName));
         if (configuration.GetValue<bool>(ApplyMigrationsOnStartupKey))

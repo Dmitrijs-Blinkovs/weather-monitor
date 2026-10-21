@@ -12,9 +12,11 @@ test.describe('Temperature page', () => {
     const cards = page.getByRole('list', { name: 'Cities in the selected period' }).getByRole('listitem');
     await expect(cards).toHaveCount(3);
 
-    for (const [index, { city, country }] of CITIES.entries()) {
-      const card = cards.nth(index);
-      await expect(card.getByRole('heading', { name: city })).toBeVisible();
+    // Alphabetical, like the legend and the tooltip - not by temperature (the mock keeps Rome warmest, Riga coldest).
+    await expect(cards.getByRole('heading')).toHaveText(['London', 'Riga', 'Rome']);
+
+    for (const { city, country } of CITIES) {
+      const card = cards.filter({ has: page.getByRole('heading', { name: city }) });
       await expect(card.getByText(country, { exact: true })).toBeVisible();
       await expect(card.getByText(/^-?\d+\.\d °C$/).first()).toBeVisible();
       await expect(card.getByText('Min')).toBeVisible();
@@ -96,16 +98,25 @@ test.describe('Temperature page', () => {
     expect(api.historyRequests()).toHaveLength(before);
   });
 
-  test('shows the same data as a table', async ({ page }) => {
-    await mockApi(page);
+  test('lists every reading as a table, page by page', async ({ page }) => {
+    const api = await mockApi(page);
     await page.goto('/temperature');
 
     await page.getByLabel('Show as table').check();
 
     const table = page.getByRole('table');
-    await expect(table.getByRole('row').first()).toContainText('Observed at');
+    await expect(table.getByRole('row').first()).toContainText('Fetched at');
+    await expect(table.getByRole('row').first()).toContainText('Last update');
     await expect(table.getByRole('cell', { name: 'IT', exact: true }).first()).toBeVisible();
-    expect(await table.getByRole('row').count()).toBeGreaterThan(3 * 10);
+    // A page holds 20 minutes of fetches: 60 readings plus the header row.
+    await expect(table.getByRole('row')).toHaveCount(61);
+
+    const pages = page.getByRole('navigation', { name: 'Reading pages' });
+    await expect(pages).toContainText('Page 1 of 6 · 360 readings');
+    await pages.getByRole('button', { name: 'Next' }).click();
+
+    await expect(pages).toContainText('Page 2 of 6');
+    expect(api.readingRequests().at(-1)?.searchParams.get('page')).toBe('2');
   });
 
   for (const colorScheme of ['light', 'dark'] as const) {
@@ -117,6 +128,12 @@ test.describe('Temperature page', () => {
 
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
       expect(results.violations).toEqual([]);
+
+      await page.getByLabel('Show as table').check();
+      await expect(page.getByRole('navigation', { name: 'Reading pages' })).toBeVisible();
+
+      const tableResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+      expect(tableResults.violations).toEqual([]);
     });
   }
 });

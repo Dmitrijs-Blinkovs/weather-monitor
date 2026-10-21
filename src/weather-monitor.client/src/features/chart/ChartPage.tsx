@@ -8,7 +8,7 @@ import { formatDateTime } from '../../lib/format';
 import { useWeatherApi } from '../../api/WeatherApiContext';
 import { CitySummaryCards } from './CitySummaryCards';
 import { DateRangeFilter } from './DateRangeFilter';
-import { ObservationsTable } from './ObservationsTable';
+import { ReadingsTable } from './ReadingsTable';
 import { TemperatureChart } from './TemperatureChart';
 
 /** Rolling presets are re-evaluated against "now" on every refresh, so the chart keeps moving. */
@@ -77,7 +77,7 @@ export function ChartPage() {
             </div>
 
             {showTable ? (
-              <ObservationsTable cities={data.cities} />
+              <ReadingsTable selection={selection} />
             ) : (
               <figure className="chart" aria-label="Line chart of temperature by city over the selected period">
                 <TemperatureChart history={data} allCities={allCities} showMinMax={showMinMax} />

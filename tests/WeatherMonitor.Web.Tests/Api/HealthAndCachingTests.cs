@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using WeatherMonitor.Application.FetchLog;
+using WeatherMonitor.Application.Paging;
 
 namespace WeatherMonitor.Web.Tests.Api;
 

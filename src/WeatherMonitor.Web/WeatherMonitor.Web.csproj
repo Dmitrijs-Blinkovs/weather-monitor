@@ -4,7 +4,7 @@
     <Description>ASP.NET Core MVC API and host for the React front end.</Description>
     <SpaRoot>..\weather-monitor.client</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
-    <SpaProxyServerUrl>http://localhost:5173</SpaProxyServerUrl>
+    <SpaProxyServerUrl>http://127.0.0.1:5173</SpaProxyServerUrl>
   </PropertyGroup>
 
   <ItemGroup>

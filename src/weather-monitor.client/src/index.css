@@ -125,13 +125,22 @@ select {
 }
 
 /* ---------- Shell ---------- */
+/* The footer stays at the bottom of the window even when a page is short. */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .app-header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
 .app-header__inner,
-.app-main {
+.app-main,
+.app-footer__inner {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
@@ -180,8 +189,20 @@ select {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  flex: 1 0 auto;
   padding-top: 28px;
   padding-bottom: 48px;
+}
+
+.app-footer {
+  border-top: 1px solid var(--border);
+}
+
+.app-footer__inner {
+  padding-top: 16px;
+  padding-bottom: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .page-header {
@@ -529,13 +550,6 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-.data-table__error {
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-secondary);
-}
-
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -552,12 +566,99 @@ select {
   color: var(--status-critical-ink);
 }
 
-.table-more {
+.table-note {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.button--small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* ---------- Dialog ---------- */
+.dialog {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.dialog__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.dialog__facts dt {
+  color: var(--text-secondary);
+}
+
+.dialog__facts dd {
+  margin: 0;
+}
+
+.dialog__section-title {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dialog__error {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dialog__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.dialog__toolbar .button {
+  margin-left: auto;
+}
+
+.code-block {
+  max-height: 50vh;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--wash);
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  /* Long values (error texts, URLs) wrap instead of scrolling sideways; indentation is kept. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .pagination {
@@ -612,7 +713,8 @@ select {
 /* ---------- Small screens ---------- */
 @media (max-width: 640px) {
   .app-header__inner,
-  .app-main {
+  .app-main,
+  .app-footer__inner {
     padding-left: 16px;
     padding-right: 16px;
   }

@@ -47,7 +47,7 @@ What happens:
 3. A console window opens for the **Web host** (ports 7180/5180). It applies EF Core migrations (creates the
    `WeatherMonitor` database in LocalDB on the first run) and starts **Vite** (port 5173).
 4. The browser opens <https://localhost:7180>; the page "Launching the SPA proxy..." forwards to
-   <http://localhost:5173>. Use the **Temperature** and **Fetch log** links.
+   <http://127.0.0.1:5173>. Use the **Temperature** and **Fetch log** links.
 
 Stop everything with **Shift+F5**.
 
@@ -93,7 +93,7 @@ FROM WeatherSnapshots ORDER BY Id DESC;
 
 ## 7. Debug the front end
 
-- Use the browser's DevTools on <http://localhost:5173>: **Sources** shows the original `.tsx` files (Vite source
+- Use the browser's DevTools on <http://127.0.0.1:5173>: **Sources** shows the original `.tsx` files (Vite source
   maps), **Network** shows the `/api/*` calls. Edits to the client hot-reload without restarting anything.
 - React state: install the React Developer Tools browser extension.
 - Visual Studio can also debug the client: set breakpoints in `.tsx` files when the browser was started by Visual Studio
@@ -115,7 +115,7 @@ FROM WeatherSnapshots ORDER BY Id DESC;
 |---|---|
 | Functions console closes immediately with `OpenWeatherMap:ApiKey is not configured` | Step 1.3 (Manage User Secrets on the Functions project). |
 | "Web + Functions" not in the dropdown | Create it as in section 2. |
-| Browser stays on "Launching the SPA proxy..." | First `npm install` still running or Node.js missing; check the Web console window. If the log says `Unable to connect to the SPA development server`, stop debugging, run `npm run dev` in `src/weather-monitor.client` from **View > Terminal**, then press F5 again - the proxy reuses the running Vite. |
+| Browser stays on "Launching the SPA proxy..." | First `npm install` still running or Node.js missing; check the Web console window. If the log says `Unable to connect to the SPA development server`, check that Vite listens on `127.0.0.1:5173` (see the npm console window) and that nothing else holds that port. |
 | Port already in use | A previous run is still alive: Shift+F5, or close stray `func`, `dotnet` and `node` processes. |
 | Dialog "There is no Functions runtime available that matches the version specified in the project" | Visual Studio uses its own Azure Functions toolset (not the `func` installed with winget), and an older toolset has no runtime for .NET 10 isolated (support starts with toolset 4.133). **Tools > Options > Projects and Solutions > Azure Functions > Check for updates**, then **Download & Install**, and restart Visual Studio. A VPN or proxy can block the download. |
 | Only the Web console opens, no data arrives | The startup item is `WeatherMonitor.Web`. Pick **Web + Functions** in the startup dropdown next to Start (or set both projects to Start under **Configure Startup Projects**). |

@@ -1,13 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { FetchLogFilter, FetchStatus } from '../../api/types';
+import type { FetchLogEntry, FetchLogFilter, FetchStatus } from '../../api/types';
 import { useWeatherApi } from '../../api/WeatherApiContext';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { PageHeader } from '../../components/PageHeader';
+import { Pagination } from '../../components/Pagination';
 import { useCities } from '../../hooks/useCities';
 import { formatDateTimeWithSeconds } from '../../lib/format';
+import { AttemptDetailsDialog } from './AttemptDetailsDialog';
 import { FetchLogTable } from './FetchLogTable';
-import { Pagination } from './Pagination';
 
 const PAGE_SIZES = [25, 50, 100] as const;
 const REFRESH_MS = 30_000;
@@ -15,6 +16,7 @@ const REFRESH_MS = 30_000;
 export function FetchLogPage() {
   const api = useWeatherApi();
   const [filter, setFilter] = useState<FetchLogFilter>({ page: 1, pageSize: PAGE_SIZES[0] });
+  const [selected, setSelected] = useState<FetchLogEntry | null>(null);
 
   const cities = useCities();
   const log = useQuery({
@@ -82,15 +84,20 @@ export function FetchLogPage() {
 
       {log.data && (
         <section className={`card${log.isPlaceholderData ? ' is-refreshing' : ''}`} aria-label="Fetch attempts">
-          <FetchLogTable entries={log.data.items} />
+          <FetchLogTable entries={log.data.items} onShowDetails={setSelected} />
           <Pagination
             page={log.data.page}
             totalPages={log.data.totalPages}
             totalCount={log.data.totalCount}
             onPageChange={(page) => setFilter((current) => ({ ...current, page }))}
+            label="Fetch log pages"
+            itemsLabel="attempts"
+            beyondLimitHint="filter by city or result to reach older entries"
           />
         </section>
       )}
+
+      <AttemptDetailsDialog entry={selected} onClose={() => setSelected(null)} />
     </>
   );
 }

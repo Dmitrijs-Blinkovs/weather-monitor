@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { fakeApi, history, series } from '../../test/fixtures';
+import { fakeApi, history, page, reading, series } from '../../test/fixtures';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { ChartPage } from './ChartPage';
 
@@ -20,16 +20,20 @@ describe('ChartPage', () => {
     expect(range.to.getTime() - range.from.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
-  it('can show the same data as a table', async () => {
-    const api = fakeApi({ getHistory: vi.fn().mockResolvedValue(history([series()])) });
+  it('can show every reading of the selected period as a table', async () => {
+    const api = fakeApi({
+      getHistory: vi.fn().mockResolvedValue(history([series()])),
+      getReadings: vi.fn().mockResolvedValue(page([reading({ id: 2 }), reading({ id: 1 })])),
+    });
     renderWithProviders(<ChartPage />, api);
     await screen.findByRole('list', { name: 'Cities in the selected period' });
 
     await userEvent.click(screen.getByLabelText('Show as table'));
 
-    const table = screen.getByRole('table');
+    const table = await screen.findByRole('table');
     expect(within(table).getAllByRole('row')).toHaveLength(3);
-    expect(within(table).getByText('6.9 °C')).toBeInTheDocument();
+    const [range] = vi.mocked(api.getReadings).mock.calls[0]!;
+    expect(range.to.getTime() - range.from.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
   it('explains when the period has no data yet', async () => {

@@ -8,8 +8,14 @@ export interface FetchLogEntry {
   attemptedAtUtc: string;
   isSuccess: boolean;
   httpStatusCode: number | null;
-  errorMessage: string | null;
   durationMs: number;
+}
+
+/** One attempt with its error text and the provider's full response body, loaded on demand. */
+export interface FetchAttemptDetails extends FetchLogEntry {
+  errorMessage: string | null;
+  /** Full payload of a success, body of a failure (API key redacted); null when no response arrived. */
+  responseBody: string | null;
 }
 
 export interface PagedResult<T> {
@@ -18,6 +24,11 @@ export interface PagedResult<T> {
   pageSize: number;
   totalCount: number;
   totalPages: number;
+}
+
+export interface PageRequest {
+  page: number;
+  pageSize: number;
 }
 
 export interface FetchLogFilter {
@@ -50,4 +61,19 @@ export interface WeatherHistory {
   fromUtc: string;
   toUtc: string;
   cities: CityTemperatureSeries[];
+}
+
+/** The weather one successful fetch returned: one per city per minute, also when nothing changed. */
+export interface WeatherReading {
+  /** Id of the fetch attempt, as in the fetch log. */
+  id: number;
+  /** When the function received the response. */
+  fetchedAtUtc: string;
+  city: string;
+  country: string;
+  temperature: number;
+  temperatureMin: number;
+  temperatureMax: number;
+  /** The provider's "last update" time; it repeats until the provider refreshes its observation. */
+  observedAtUtc: string;
 }

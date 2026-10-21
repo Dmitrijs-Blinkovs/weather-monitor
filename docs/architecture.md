@@ -55,7 +55,7 @@ flowchart TB
 | Layer | Contains | Depends on |
 |---|---|---|
 | Domain | `FetchAttempt`, `WeatherSnapshot`, `CurrentWeather`; invariants (UTC, lengths, error-text sanitising) | nothing |
-| Application | Use cases (`WeatherIngestionService`, `WeatherHistoryService`, `DataRetentionService`), ports (`IWeatherProvider`, `IFetchAttemptRepository`, `IFetchLogReader`, `IWeatherHistoryReader`), DTOs, options, `IngestionMetrics`, DI extensions | Domain, `Microsoft.Extensions.*` abstractions |
+| Application | Use cases (`WeatherIngestionService`, `WeatherHistoryService`, `DataRetentionService`), ports (`IWeatherProvider`, `IFetchAttemptRepository`, `IFetchLogReader`, `IWeatherHistoryReader`, `IWeatherReadingsReader`), paging limits, DTOs, options, `IngestionMetrics`, DI extensions | Domain, `Microsoft.Extensions.*` abstractions |
 | Infrastructure | EF Core (`WeatherDbContext`, configurations, migrations, repository, readers), `OpenWeatherMapClient`, health checks, migration hosted service, DI extensions | Application, EF Core SQL Server, Http.Resilience |
 | Hosts | Composition only (`Program.cs`), the timer functions, MVC controllers, request models, HTTP pipeline concerns (`Security/`, `Caching/`) | everything above |
 
@@ -171,8 +171,10 @@ small and never block the minute-by-minute inserts for long ([ADR 0014](adr/0014
 | Endpoint | Controller -> port | Notes |
 |---|---|---|
 | `GET /api/logs?page&pageSize&city&status` | `LogsController` -> `IFetchLogReader.GetPageAsync` | newest first; `page` 1-1,000; `pageSize` 1-200 (default 50); `status` `Success`/`Failure`; cached 10 s |
+| `GET /api/logs/{id}` | `LogsController` -> `IFetchLogReader.GetDetailsAsync` | one attempt plus `responseBody` (`RawPayload` of its snapshot for a success, `ResponseBody` for a failure); `404` problem when unknown or purged, also for an id that is not a positive number; cached 5 min (an attempt never changes) |
 | `GET /api/cities` | `CitiesController` -> `IFetchLogReader.GetCitiesAsync` | distinct cities from the log, alphabetical; cached 5 min |
 | `GET /api/weather/history?from&to` | `WeatherController` -> `IWeatherHistoryService` | ISO 8601 with offset; `from < to`; range <= 31 days; cached 60 s, varied by query |
+| `GET /api/weather/readings?from&to&page&pageSize` | `WeatherController` -> `IWeatherReadingsReader.GetPageAsync` | every successful fetch, newest first; range as for history; `page` 1-1,000; `pageSize` 1-200 (default 50); cached 10 s |
 | `GET /health/live` | health checks (none) | liveness: the process answers; App Service probe; not rate-limited |
 | `GET /health` | health checks tagged `ready` | database reachable (`Unhealthy`/503 otherwise) and a successful fetch within 10 minutes (`Degraded` otherwise) |
 | `GET /openapi/v1.json` | OpenAPI (development only) | |
@@ -185,15 +187,22 @@ into one point per real observation. `WeatherHistoryService` then groups by city
 point per observation time (a revised observation with the same `dt` would otherwise appear twice) and computes the card
 summary: latest temperature and country, lowest `temp_min`, highest `temp_max`, last update time.
 
-Fetch-log paging is a deferred join: `OFFSET @skip ... FETCH NEXT @take` runs over the narrow time index (keys only),
-then only the rows of the page are read. Measured on 90 days of data (388,800 attempts): page 1,000 x 200 reads
+Readings query: the opposite of the history - nothing is collapsed. Every successful attempt in the range is one row
+(fetch time, city, country, temperatures and the observation's `ObservedAtUtc`), so the UI can prove that a fetch arrived
+even when the provider returned the same observation as a minute before. It pages like the fetch log (below) over the
+attempts' `(IsSuccess, AttemptedAtUtc)` index and then reads only that page's snapshots, never the payload.
+
+Fetch-log and readings paging is a deferred join: `OFFSET @skip ... FETCH NEXT @take` runs over the narrow time index
+(keys only), then only the rows of the page are read. Measured on 90 days of data (388,800 attempts): page 1,000 x 200 reads
 ~1,500 pages instead of ~640,000 with a plain OFFSET over full rows. The `COUNT(*)` for the page total (~1,750 pages)
 is now the larger part of an uncached log request.
 
-Request models (`FetchLogRequest`, `WeatherHistoryRequest : IValidatableObject`) validate against the Application's
-rules and return `400 application/problem+json` through `[ApiController]`; the rules themselves guard the use cases too:
-`WeatherHistoryRules` (range, used by the service) and `FetchLogQuery` (page 1-1,000, page size 1-200, enforced by its
-constructor). `FetchLogQuery.MaxPage` bounds `OFFSET` scans and must match `MAX_LOG_PAGE` in the client.
+Request models (`FetchLogRequest`; `WeatherHistoryRequest` and `WeatherReadingsRequest`, both a `TimeRangeRequest :
+IValidatableObject`) validate against the Application's rules and return `400 application/problem+json` through
+`[ApiController]`; the rules themselves guard the use cases too: `WeatherHistoryRules` (range, used by the service and
+by `WeatherReadingsQuery`) and `PageLimits` (page 1-1,000, page size 1-200, enforced by the constructors of
+`FetchLogQuery` and `WeatherReadingsQuery`). `PageLimits.MaxPage` bounds `OFFSET` scans and must match `MAX_PAGE` in
+the client.
 
 JSON: camelCase, enums as strings, timestamps as UTC with `Z`.
 
@@ -213,24 +222,31 @@ src/
   main.tsx, App.tsx            Router (/temperature, /fetch-log), QueryClient, lazy-loaded pages, error boundary per route
   api/                         types.ts (mirrors DTOs), http.ts (fetch + problem details), weatherApi.ts, WeatherApiContext.ts
   features/chart/              ChartPage, DateRangeFilter, CitySummaryCards, TemperatureChart, WeatherTooltip,
-                               ObservationsTable, chartData.ts (pure data shaping), downsample.ts (LTTB)
-  features/fetch-log/          FetchLogPage, FetchLogTable, Pagination
+                               ReadingsTable, chartData.ts (pure data shaping), downsample.ts (LTTB)
+  features/fetch-log/          FetchLogPage, FetchLogTable, AttemptDetailsDialog
   lib/                         dateRange.ts (presets, validation, datetime-local), format.ts, seriesColors.ts
-  components/                  PageHeader, ErrorNotice, StatusBadge, ErrorBoundary
+  components/                  PageHeader, ErrorNotice, StatusBadge, ErrorBoundary, Pagination
   test/                        setup.ts, fixtures.ts, renderWithProviders.tsx
 ```
 
 - **Data:** TanStack Query. Rolling presets (1 h, 6 h, 24 h, 7 d) are re-evaluated against "now" and refetched every
   60 s; their `to` is rounded up to the next whole minute, so all viewers within a minute send the same URL and hit the
-  server's output cache. A custom from/to range is fixed. The log refreshes every 30 s. Previous data stays visible
-  (dimmed) while a new filter loads.
+  server's output cache. A custom from/to range is fixed. The log and the readings table refresh every 30 s. Previous
+  data stays visible (dimmed) while a new filter loads.
 - **Chart:** Recharts `ComposedChart`. Series are merged into one row per observation time (`toChartRows`); lines
   bridge gaps with `connectNulls`. Each city is downsampled to at most 600 points (largest-triangle-three-buckets keeps
   peaks and troughs), so a 31-day range stays fast; the tooltip still uses every observation. The tooltip shows, for
-  every city, the observation that was current at the hovered time (`pointAt`, binary search). Ticks are spread over the
-  whole selected range (`timeTicks`). The min/max band can be hidden; the same data is available as a table, rendered
-  500 rows at a time ("Show more").
-- **Paging:** the log pager stops at page 1,000 (`MAX_LOG_PAGE`, same cap as the API) and suggests filtering instead.
+  every city, the observation that was current at the hovered time (`pointAt`, binary search). Legend, tooltip
+  rows and city cards all keep the API's alphabetical city order. Ticks are spread over the
+  whole selected range (`timeTicks`). The min/max band can be hidden. "Show as table" lists every reading
+  instead (one row per city and fetch, 60 per page from the server) with the fetch time and the provider's last update time, so a new fetch is
+  visible even when the observation, and so the chart, did not change ([ADR 0004](adr/0004-distinct-observations-on-read.md)).
+- **Attempt details:** each log row has a **Payload** (success) or **Details** (failure) button. It opens a native
+  `<dialog>` (focus, Esc and backdrop handled by the browser) that only then requests `GET /api/logs/{id}`, so the
+  log never transfers error texts or bodies; the result is cached for the session. JSON is indented for reading and rendered as
+  text, never as HTML; **Copy** takes the body exactly as stored.
+- **Paging:** both pagers (`components/Pagination.tsx`) stop at page 1,000 (`MAX_PAGE`, same cap as the API) and suggest
+  filtering or a shorter period instead.
 - **Errors:** an `ErrorBoundary` around the routes (reset on navigation) turns a render error into a message instead of
   a blank page; API errors show the problem details' `detail` (or `title`).
 - **Colour:** fixed categorical slots validated for colour-vision deficiency (light and dark), assigned per city from the
@@ -240,7 +256,8 @@ src/
   24-hour clock) in the viewer's time zone; the native date-time inputs follow the browser's own locale.
 - **CSP:** no inline scripts or styles are needed; `vite preview` serves the same headers as the server
   (`vite.config.ts`), so the Playwright suite fails on any CSP violation.
-- **Dev serving:** `npm run dev` (Vite, port 5173) is started by the ASP.NET Core SPA proxy; Vite proxies `/api` and
+- **Dev serving:** `npm run dev` (Vite on `127.0.0.1:5173`: IPv4 on purpose, because Node binds `localhost` to `::1`
+  only, which hangs where IPv6 loopback is blocked) is started by the ASP.NET Core SPA proxy; Vite proxies `/api` and
   `/health` to the backend. On publish, the `.esproj` builds the app and its `dist` is copied into `wwwroot`.
 
 ## 9. Observability
@@ -283,12 +300,12 @@ an out-of-range retention stops the host with a message that says what to set.
 
 | Project | What it proves | How |
 |---|---|---|
-| Application.Tests | domain invariants (`FetchAttempt`, `CurrentWeather`) and error-text sanitising; query limits; the dependency rule; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
+| Application.Tests | domain invariants (`FetchAttempt`, `CurrentWeather`) and error-text sanitising; query and paging limits; the dependency rule; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
 | Infrastructure.Tests | the data-model contract (every text column has the length the domain validates, datetime2, float, char(2)); OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
 | Web.Tests | controllers depend only on Application ports; routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression | `WebApplicationFactory` with substituted ports and a temporary web root |
 | Functions.Tests | both timer bindings (every minute, daily; not on startup), the shipped configuration (cities, retention), delegation and failure propagation | reflection on the binding attributes; the real `appsettings.json` |
 | client (Vitest) | date-range rules and rounding, English formatting, chart shaping, downsampling, tooltip, filters, tables and "show more", paging cap, error boundary, both pages against a fake API | Testing Library, jsdom |
-| client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), table view, log filters/paging, error state, English UI in a Latvian browser, accessibility, no CSP violations | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |
+| client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), readings table/paging, log filters/paging, error state, English UI in a Latvian browser, accessibility, no CSP violations | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |
 
 Nothing in the test suite needs SQL Server, Azurite, network access or an API key. CI also collects code coverage
 (.NET: Microsoft.Testing.Platform coverage, summary on the run page; front end: Vitest v8 coverage) and, in a separate

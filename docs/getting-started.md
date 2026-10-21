@@ -103,7 +103,7 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https
 - The first start of either host creates the `WeatherMonitor` database in LocalDB (migrations run automatically in
   development).
 - The Web host starts Vite (`npm run dev`) itself and the browser at <https://localhost:7180> is forwarded to
-  <http://localhost:5173>. If the browser warns about the certificate, run `dotnet dev-certs https --trust` once.
+  <http://127.0.0.1:5173>. If the browser warns about the certificate, run `dotnet dev-certs https --trust` once.
 - In Visual Studio: pick the **Web + Functions** profile and press F5 (Azurite starts automatically).
 
 ## 7. Verify
@@ -151,7 +151,7 @@ shows a Windows administrator prompt that only you can approve.
 | HTTP 429 | Rate limit; another app is using the same key. |
 | Functions host: `Microsoft.Azure.Storage ... connection refused` / timer does not fire | Azurite is not running. |
 | `A network-related or instance-specific error ... LocalDB` | `sqllocaldb start MSSQLLocalDB`; check `sqllocaldb info MSSQLLocalDB`. |
-| Requests to 5180 hang, Web log says `Unable to connect to the SPA development server` | The Vite process started by the SPA proxy hung. Stop the Web host, start Vite yourself in `src/weather-monitor.client` with `npm run dev` (for the `http` profile set `ASPNETCORE_URLS=http://localhost:5180` first so Vite proxies the API there), then start the Web host again - the proxy reuses the running Vite. |
+| Web log says `Unable to connect to the SPA development server` | Vite did not start or listens elsewhere: check the npm console window. Vite must listen on `127.0.0.1:5173` (`server.host` in `vite.config.ts`, `SpaProxyServerUrl` in the Web `.csproj`); on `localhost` Node binds IPv6 `::1` only, which hangs where IPv6 loopback is blocked. |
 | Port 5173/5180/7071/7180 already in use | Another instance is running; stop it (Visual Studio Shift+F5 or close the terminal). |
 | `func` not found after winget install | Open a new terminal (PATH refresh). |
 | `Testing with VSTest target is no longer supported` | Use `dotnet test --solution ...` / `--project ...` (Microsoft.Testing.Platform, configured in `global.json`). |

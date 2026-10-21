@@ -14,7 +14,7 @@ export default defineConfig({
   retries: env.CI ? 2 : 0,
   reporter: env.CI ? [['github'], ['html', { open: 'never' }]] : [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: `http://localhost:${port}`,
+    baseURL: `http://127.0.0.1:${port}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     // A Latvian browser in Riga proves the UI stays English and times are shown in the viewer's zone.
@@ -24,7 +24,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: `npm run build && npm run preview -- --port ${port} --strictPort`,
-    url: `http://localhost:${port}`,
+    url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !env.CI,
     timeout: 180_000,
   },

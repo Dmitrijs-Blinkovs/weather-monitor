@@ -11,14 +11,14 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Requirement | Where |
 |---|---|
 | Fetch London, Rome, Riga every minute | `src/WeatherMonitor.Functions/FetchWeatherFunction.cs` (timer `0 */1 * * * *`), cities in `appsettings.json` |
-| Store the full payload | `WeatherSnapshots.RawPayload`: the response body exactly as received (all fields, not re-serialised), plus extracted columns for querying; a failed attempt keeps the body it got in `FetchAttempts.ResponseBody` (API key redacted) |
+| Store the full payload | `WeatherSnapshots.RawPayload`: the response body exactly as received (all fields, not re-serialised), plus extracted columns for querying; a failed attempt keeps the body it got in `FetchAttempts.ResponseBody` (API key redacted). Both can be opened per attempt in the fetch log (**Payload** / **Details**). |
 | Store success/failure attempt log | `FetchAttempts`: time, city, result, HTTP status, error, duration - for every attempt, also failed and cancelled ones |
-| UI page with the fetch log | `/fetch-log`: filter by city and result, paging, auto-refresh |
-| UI page with a chart: min/max temperature, country, city, temperature, last update time | `/temperature`: one chart for all cities with a min/max band, a card per city (country, temperature, min/max, last update), tooltip, table view |
+| UI page with the fetch log | `/fetch-log`: filter by city and result, paging, auto-refresh, and per attempt a dialog with the full payload or the full error and response body (loaded on click) |
+| UI page with a chart: min/max temperature, country, city, temperature, last update time | `/temperature`: one chart for all cities with a min/max band, a card per city (country, temperature, min/max, last update), tooltip, and a table of every reading (one row per city per minute, with the provider's last update time) |
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 163 .NET tests (xUnit v3), 54 front-end unit/component tests (Vitest), 19 browser tests (Playwright) |
+| Unit tests | 193 .NET tests (xUnit v3), 66 front-end unit/component tests (Vitest), 21 browser tests (Playwright) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -38,6 +38,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | [docs/debugging-in-visual-studio.md](docs/debugging-in-visual-studio.md) | Running and debugging step by step in Visual Studio 2026 |
 | [docs/deployment.md](docs/deployment.md) | Azure: what gets created, deploying with `azd` and GitHub Actions (OIDC), operations, extending, hardening |
 | [docs/security.md](docs/security.md) | Threat model, OWASP Top 10 / API Top 10 / CI/CD Top 10 mapping, accepted risks |
+| [docs/performance.md](docs/performance.md) | Load test: a month and 90 days of data, concurrency, the UI and the retention purge, with the scripts to repeat it |
 | [docs/architecture.md](docs/architecture.md) | Components, data model, flows, API, front end, configuration, testing |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records - why things are the way they are |
 | [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | Orientation, conventions and pitfalls for contributors and AI agents |
@@ -53,7 +54,7 @@ flowchart LR
         P[PurgeOldDataFunction<br/>timer: daily]
     end
     subgraph ASP.NET Core
-        API[MVC API controllers<br/>/api/logs, /api/weather/history, /api/cities]
+        API[MVC API controllers<br/>/api/logs, /api/cities,<br/>/api/weather/history, /api/weather/readings]
         SPA[React + TypeScript SPA<br/>served from wwwroot]
     end
     DB[(SQL Server / Azure SQL<br/>FetchAttempts, WeatherSnapshots)]
@@ -71,7 +72,8 @@ The solution follows a clean / onion layering; dependencies only point inwards:
 src/
   WeatherMonitor.Domain           Entities FetchAttempt and WeatherSnapshot, value object CurrentWeather. No dependencies.
   WeatherMonitor.Application      Use cases (ingestion, history, retention) and the ports they need:
-                                  IWeatherProvider, IFetchAttemptRepository, IFetchLogReader, IWeatherHistoryReader.
+                                  IWeatherProvider, IFetchAttemptRepository, IFetchLogReader, IWeatherHistoryReader,
+                                  IWeatherReadingsReader.
   WeatherMonitor.Infrastructure   Adapters: EF Core DbContext, migrations, repository/readers, OpenWeatherMap HTTP client.
   WeatherMonitor.Functions        Azure Functions isolated worker; thin timer functions for ingestion and retention.
   WeatherMonitor.Web              ASP.NET Core MVC API controllers, security headers, rate limiting, caching, health
@@ -86,12 +88,12 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
 
 - **Single responsibility** - the function is a thin trigger; fetching (`OpenWeatherMapClient`), orchestration
   (`WeatherIngestionService`), persistence (`FetchAttemptRepository`) and reading (`FetchLogReader`,
-  `WeatherHistoryReader`) are separate classes. The read side and the write side use separate interfaces.
+  `WeatherHistoryReader`, `WeatherReadingsReader`) are separate classes. The read side and the write side use separate interfaces.
 - **Open/closed** - cities are configuration (`Weather:Cities`); another weather provider is a new `IWeatherProvider`.
 - **Liskov** - every `IWeatherProvider` reports expected failures as a `WeatherFetchResult` instead of throwing, so callers
   never depend on a particular implementation's exceptions.
-- **Interface segregation** - consumers depend on narrow ports (the API only on `IFetchLogReader` and
-  `IWeatherHistoryService`); the web app never registers the OpenWeatherMap client or the ingestion use case, so it does
+- **Interface segregation** - consumers depend on narrow ports (the API only on `IFetchLogReader`,
+  `IWeatherHistoryService` and `IWeatherReadingsReader`); the web app never registers the OpenWeatherMap client or the ingestion use case, so it does
   not even need the API key.
 - **Dependency inversion** - Application defines the ports; Infrastructure implements them; hosts compose them. Time comes
   from `TimeProvider`, so tests control the clock. The React pages get the API through a context, so tests inject a fake.
@@ -273,7 +275,7 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 - **Front end (Vitest)** - date-range rules, formatting, chart data shaping and downsampling, tooltip, filters, tables,
   paging limits, the error boundary and both pages against a fake API.
 - **Browser (Playwright)** - both pages in Chromium against the production build with a mocked API: chart with all
-  cities, tooltip, presets and custom date/time range (time-zone conversion), table view, fetch log filters and paging,
+  cities, tooltip, presets and custom date/time range (time-zone conversion), readings table and its paging, fetch log filters and paging,
   error state, English UI in a Latvian browser, axe-core accessibility in light and dark mode, no CSP violations.
 
 ## CI/CD
@@ -292,8 +294,10 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 
 | Method & path | Description |
 |---|---|
-| `GET /api/logs?page=1&pageSize=50&city=Riga&status=Failure` | Fetch attempts, newest first. `page` 1-1,000, `pageSize` 1-200; `status` is `Success` or `Failure`. |
+| `GET /api/logs?page=1&pageSize=50&city=Riga&status=Failure` | Fetch attempts, newest first: time, city, result, HTTP status, duration. `page` 1-1,000, `pageSize` 1-200; `status` is `Success` or `Failure`. |
+| `GET /api/logs/{id}` | One attempt with its full `errorMessage` and `responseBody`: the full provider payload of a success, the body of a failure (API key redacted), `null` when no response arrived; `404` when unknown or purged. |
 | `GET /api/weather/history?from=2026-10-18T12:00:00Z&to=2026-10-19T12:00:00Z` | Per-city series plus country, latest temperature, period min/max and last update time. Range up to 31 days. |
+| `GET /api/weather/readings?from=2026-10-19T11:00:00Z&to=2026-10-19T12:00:00Z&page=1&pageSize=60` | Every successful fetch in the range, newest first: fetch time, city, country, temperature, min/max and the provider's last update time. Range up to 31 days, `page` 1-1,000, `pageSize` 1-200. |
 | `GET /api/cities` | Cities that have been fetched at least once. |
 | `GET /health/live` | Liveness: the process answers (`Healthy`). Used by the App Service health probe. |
 | `GET /health` | Readiness: database reachable and a successful fetch within 10 minutes (`Healthy`), `Degraded` without recent data, `503 Unhealthy` without a database. |

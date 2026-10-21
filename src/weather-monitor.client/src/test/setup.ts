@@ -9,6 +9,17 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 };
 
+// jsdom has <dialog> but not its methods; these toggle `open` and fire "close" as browsers do.
+HTMLDialogElement.prototype.showModal ??= function showModal(this: HTMLDialogElement) {
+  this.open = true;
+};
+HTMLDialogElement.prototype.close ??= function close(this: HTMLDialogElement) {
+  if (this.open) {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  }
+};
+
 afterEach(() => {
   cleanup();
 });

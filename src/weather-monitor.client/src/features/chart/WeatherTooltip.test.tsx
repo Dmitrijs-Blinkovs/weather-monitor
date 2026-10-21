@@ -24,6 +24,25 @@ describe('WeatherTooltip', () => {
     expect(screen.getByText(/min 17\.0 °C · max 19\.5 °C/)).toBeInTheDocument();
   });
 
+  it('keeps the alphabetical order of the cities, whatever their temperature', () => {
+    const london = series({
+      city: 'London',
+      country: 'GB',
+      points: [{ observedAtUtc: '2026-10-19T11:40:00Z', temperature: 9.6, temperatureMin: 8, temperatureMax: 10 }],
+    });
+    render(
+      <WeatherTooltip
+        active
+        time={Date.parse('2026-10-19T11:45:00Z')}
+        cities={[london, ...cities]}
+        colors={[...colors, 'var(--series-3)']}
+      />,
+    );
+
+    const names = screen.getAllByRole('listitem').map((row) => row.querySelector('.chart-tooltip__name')?.textContent);
+    expect(names).toEqual(['London, GB', 'Riga, LV', 'Rome, IT']);
+  });
+
   it('leaves out cities that had no observation yet', () => {
     render(<WeatherTooltip active time={Date.parse('2026-10-19T11:35:00Z')} cities={cities} colors={colors} />);
 
