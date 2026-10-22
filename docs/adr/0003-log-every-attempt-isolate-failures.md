@@ -1,8 +1,5 @@
 # 0003. Log every attempt; expected failures are results, not exceptions
 
-- Status: Accepted (partly superseded by [0017](0017-request-budget-and-deployment-freshness.md))
-- Date: 2026-10-19
-
 ## Context
 
 The assignment requires a log of successful and failed attempts. Three independent cities are fetched per run; one bad

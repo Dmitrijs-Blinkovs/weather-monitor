@@ -1,8 +1,5 @@
 # 0017. Bound the full HTTP request and check freshness after deployment completes
 
-- Status: Accepted (supersedes the timeout detail of 0003 and the smoke-test watermark of 0012 and 0016)
-- Date: 2026-10-22
-
 ## Context
 
 The resilience handler's 30 s total timeout ends before HttpClient finishes buffering the response body. A server

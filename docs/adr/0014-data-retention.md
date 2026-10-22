@@ -1,8 +1,5 @@
 # 0014. Purge history older than 90 days, daily and in batches
 
-- Status: Accepted
-- Date: 2026-10-20
-
 ## Context
 
 Every minute three attempts and three snapshots (each with ~0.5 KB of JSON) are written: about 8,600 rows and 5 MB per

@@ -1,8 +1,5 @@
 # 0008. API key in user secrets; `local.settings.json` committed without secrets
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 The OpenWeatherMap key must never reach source control or logs. A reviewer should be able to clone and press F5.

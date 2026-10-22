@@ -1,8 +1,5 @@
 # 0012. CI/CD with GitHub Actions, azd and OpenID Connect
 
-- Status: Accepted (partly superseded by [0017](0017-request-budget-and-deployment-freshness.md))
-- Date: 2026-10-19
-
 ## Context
 
 Every change should be built and tested the same way, on a clean machine, before it is merged. Deployments must be
@@ -18,7 +15,7 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
   - Infrastructure: Bicep compile and lint, warnings fail the job.
 - **CD** (`.github/workflows/deploy.yml`): `azd provision` + `azd deploy` with OIDC federated credentials
   (`azd pipeline config`), the `production` environment for approvals, and a smoke test (`Healthy`, plus a new successful fetch of every city
-  after the deployment started). Manual trigger
+  after both deployments completed, ADR 0017). Manual trigger
   until the first deployment has been made.
 - **Dependabot** updates NuGet, npm (both grouped) and GitHub Actions weekly; a pull request template carries the definition
   of done.
@@ -29,7 +26,7 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
 - No Azure secret exists in GitHub; access can be revoked by deleting the federated credential.
 - Recommended repository settings (not code): protect `main`, require the CI checks, require one review.
 
-## Amendment (2026-10-20, after the security review)
+## Build and deploy jobs
 
 - The deployment is split into a **build job without any credential** (restore, `npm ci`, `dotnet publish`, upload) and a
   **deploy job with the OIDC token** that runs no build tooling (`azd provision`, `azd deploy --from-package`). A

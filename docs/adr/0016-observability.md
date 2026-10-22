@@ -1,14 +1,11 @@
 # 0016. Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert
 
-- Status: Accepted (partly superseded by [0017](0017-request-budget-and-deployment-freshness.md))
-- Date: 2026-10-20
-
 ## Context
 
 Expected failures are values, not exceptions (ADR 0003), so a run in which every city fails (for example a revoked
 key) is still a "successful" function invocation. Logs alone would not tell anyone that no data has arrived for an
-hour. The first version also relied on Application Insights auto-instrumentation, with no traces of the outgoing
-OpenWeatherMap calls from the function.
+hour. Application Insights auto-instrumentation alone would not trace the outgoing OpenWeatherMap calls from the
+function.
 
 ## Decision
 
@@ -17,11 +14,13 @@ OpenWeatherMap calls from the function.
   `UseFunctionsWorkerDefaults()`, HttpClient instrumentation and `telemetryMode: OpenTelemetry` in `host.json`.
   HttpClient instrumentation redacts query-string values, so the API key never reaches telemetry.
 - **Metrics** (`WeatherMonitor.Ingestion` meter): `weather.fetch.attempts{city,outcome}` and `weather.fetch.duration`.
-- **Health checks:** `/health/live` (process only; App Service health probe) and `/health` (database reachable and a
-  successful fetch within 10 minutes - Degraded otherwise). The deployment smoke test requires `Healthy` and a successful fetch
-  of every city after the deployment started, which proves the new release's chain timer -> provider -> database -> web.
-- **Alert** (Bicep): a scheduled log query on the metric fires when no success was recorded for 15 minutes; e-mail via an
-  optional action group (`ALERT_EMAIL`).
+- **Health checks:** `/health/live` (process only; App Service health probe) and `/health` (database reachable and, for
+  every city attempted in the last day, a successful fetch within 10 minutes - `Degraded` naming the others, so one
+  working city cannot hide the failing ones). The deployment smoke test requires `Healthy` and a successful fetch
+  of every city after both deployments completed (ADR 0017), which checks the chain timer -> provider -> database -> web.
+- **Alert** (Bicep): a scheduled log query on the metric fires when a city, or every city, had no success for
+  15 minutes; e-mail via an optional action group (`ALERT_EMAIL`). The query compiles as part of the Bicep but has not
+  run against a real workspace yet.
 
 ## Consequences
 
@@ -29,20 +28,13 @@ OpenWeatherMap calls from the function.
   data stops arriving - including the case where everything "succeeds" technically.
 - Locally nothing is exported and OpenTelemetry is not wired up. This matters for the function: with
   `UseFunctionsWorkerDefaults()` the worker reports its own telemetry and the host stops forwarding worker logs, so
-  without an exporter the console would show no application log at all (found in the live run of 2026-10-20).
+  without an exporter the console would show no application log at all.
 
-## Amendment (2026-10-20)
+## Metrics count stored attempts
 
 - `weather.fetch.attempts` and `weather.fetch.duration` are recorded only after the run is stored. When the database
   rejects the writes (down, full, schema mismatch), no success is counted, so the alert fires; the service also logs
   "Storing N fetch attempts failed" as an error before the invocation fails.
-
-## Amendment (2026-10-21): per city
-
-- An independent review found that one working city kept `/health` `Healthy` and the alert quiet while the others
-  failed. `/health` now checks every city attempted in the last day (`Degraded` names those without a success in
-  10 minutes), and the alert query adds a row per city without a success in its window besides the "nothing at all"
-  row. The KQL compiles as part of the Bicep but has not run against a real workspace yet.
 
 ## Alternatives considered
 

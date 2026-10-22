@@ -1,8 +1,5 @@
 # 0007. React SPA as an `.esproj`, served by the ASP.NET Core app
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 The assignment requires ASP.NET Core MVC and React/TypeScript, and the solution must open and run in Visual Studio 2026.

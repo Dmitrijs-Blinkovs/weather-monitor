@@ -1,8 +1,5 @@
 # 0006. UTC `DateTime` with an EF converter instead of `DateTimeOffset`
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 All times come from UTC sources (provider `dt`, `TimeProvider.GetUtcNow()`). Persistence tests run on SQLite, whose EF

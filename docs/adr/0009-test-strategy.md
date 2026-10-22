@@ -1,8 +1,5 @@
 # 0009. Test without external dependencies
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 Tests must run anywhere (developer machines, CI on Linux) quickly and deterministically, and still exercise the parts

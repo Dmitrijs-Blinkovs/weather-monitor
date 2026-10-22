@@ -1,13 +1,10 @@
 # 0015. One managed identity per app, read-only database access for the web app
 
-- Status: Accepted (supersedes the "one shared identity" part of ADR 0011)
-- Date: 2026-10-20
-
 ## Context
 
-ADR 0011 gave both apps one user-assigned identity that was the SQL Entra administrator and could also read the API key
-and write to the storage account holding the function's deployment package. The web app is public; any remote code
-execution, SSRF or compromised dependency there would have inherited all of that.
+One identity shared by both apps would be the SQL Entra administrator, read the API key and write to the storage
+account holding the function's deployment package. The web app is public; any remote code execution, SSRF or
+compromised dependency there would inherit all of that.
 
 ## Decision
 
@@ -17,7 +14,7 @@ execution, SSRF or compromised dependency there would have inherited all of that
 - The function grants that read access itself after migrating (`Database:ReadOnlyIdentity` settings): it creates a
   contained user from the web identity's client ID (`CREATE USER ... WITH SID = ..., TYPE = E`, which needs no directory
   permissions) and adds it to `db_datareader`. The statement is idempotent and parameterised.
-- The web app no longer applies migrations (`Database__ApplyMigrationsOnStartup=false` in Azure).
+- The web app does not apply migrations (`Database__ApplyMigrationsOnStartup=false` in Azure).
 
 ## Consequences
 
@@ -31,4 +28,4 @@ execution, SSRF or compromised dependency there would have inherited all of that
 - An Entra group as SQL administrator and migrations from the pipeline (EF Core migration bundle) with separate
   `db_datareader`/`db_datawriter` users for both apps: strictest, but needs the pipeline identity inside the database and a
   T-SQL step; the natural next step for a team setup.
-- Keep one identity (ADR 0011): simplest, rejected after the security review.
+- One identity shared by both apps: simplest, but the public web app would hold every right the function needs.

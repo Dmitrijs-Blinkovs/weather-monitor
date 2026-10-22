@@ -1,8 +1,5 @@
 # 0013. Browser tests with Playwright against the production build and a mocked API
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 Component tests (Vitest + jsdom) cannot render the chart (no layout engine), run the real router and bundle, or check

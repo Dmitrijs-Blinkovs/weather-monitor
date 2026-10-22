@@ -151,7 +151,7 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
    build and a migrations up/down job on SQL Server).
 3. New behaviour has tests at the lowest layer that can prove it; bugs get a test that fails without the fix.
 4. A data model change has a migration; an API change is reflected in `src/api/types.ts` and the README API table.
-5. A changed design decision has a new or superseding ADR in `docs/adr/`; a changed security control is reflected in
+5. A changed design decision has a new ADR in `docs/adr/`, linked from the record it changes; a changed security control is reflected in
    `docs/security.md`.
 6. User-visible change: run the app (`.claude/skills/run-locally`) and look at it.
 

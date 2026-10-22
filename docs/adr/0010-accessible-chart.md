@@ -1,8 +1,5 @@
 # 0010. Validated colour palette, colour per city, value-first tooltip
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 All cities share one chart; readers must tell the cities apart (including with colour-vision deficiency, in light and
@@ -14,7 +11,7 @@ dark mode) and read exact values.
   both modes; dark mode has its own steps.
 - Colour follows the city: `colorForCity` indexes the full alphabetical city list, so a filter never repaints a city.
 - Identity is never colour alone: legend plus direct labels at the end of each line; a colour-free table of the readings behind the chart (every
-  fetch, see the ADR 0004 amendment).
+  fetch, see ADR 0004).
 - Tooltip lists every city's observation current at the hovered time, value first, with min/max and update time.
 - Text uses the text tokens (`--text-*`), never series colours; status (success/failed) always pairs an icon with a label.
 

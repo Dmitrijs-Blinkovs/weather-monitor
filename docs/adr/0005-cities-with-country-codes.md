@@ -1,8 +1,5 @@
 # 0005. Configure cities with ISO country codes
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 During the first local run, `q=Rome` returned Rome, Georgia, USA (lat 34.26, lon -85.16, country `US`), not Rome, Italy.

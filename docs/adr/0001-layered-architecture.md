@@ -1,8 +1,5 @@
 # 0001. Clean/onion layering with ports in Application
 
-- Status: Accepted
-- Date: 2026-10-19
-
 ## Context
 
 Two hosts (an Azure Function that writes, a web app that reads) share the same model and database. The assignment asks
