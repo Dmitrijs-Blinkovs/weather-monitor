@@ -1,6 +1,6 @@
 # 0016. Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert
 
-- Status: Accepted
+- Status: Accepted (partly superseded by [0017](0017-request-budget-and-deployment-freshness.md))
 - Date: 2026-10-20
 
 ## Context

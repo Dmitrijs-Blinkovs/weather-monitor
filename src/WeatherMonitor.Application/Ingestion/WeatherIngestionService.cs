@@ -18,8 +18,8 @@ internal sealed partial class WeatherIngestionService(
 
     /// <summary>
     /// How long saving a run may take. It is independent of the host's cancellation, so a run whose results exist is
-    /// stored even when the host starts shutting down meanwhile. Fetching (at most 30 s) plus this stays below the
-    /// Functions timeout of 55 s.
+    /// stored even when the host starts shutting down meanwhile. Fetching (OpenWeatherMap:RequestTimeout, 30 s by default and
+    /// at most 40 s) plus this stays below the Functions timeout of 55 s.
     /// </summary>
     private static readonly TimeSpan SaveBudget = TimeSpan.FromSeconds(10);
 
@@ -35,7 +35,7 @@ internal sealed partial class WeatherIngestionService(
 
         // Fetching follows the host's token, saving does not: even a cancelled run is stored (finished cities keep their
         // result, unfinished ones are failures), also when the cancellation arrives during the save. There is no retry
-        // here, so an uncertain commit cannot store a run twice.
+        // at this layer; EF still retries transient SQL errors, so this is not an exactly-once guarantee.
         using (var saveBudget = new CancellationTokenSource(SaveBudget))
         {
             await SaveAsync(attempts, saveBudget.Token);

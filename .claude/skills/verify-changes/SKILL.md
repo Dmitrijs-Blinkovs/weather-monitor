@@ -46,7 +46,15 @@ failures leave a report: `npx playwright show-report`. An axe violation is a rea
 violation means new inline script/style or a new origin: fix the code, or change the policy in both
 `Web/Security/SecurityHeaders.cs` and `vite.config.ts` and record why in `docs/security.md`.
 
-## 4. Infrastructure (when `infra/` changed)
+## 4. Deployment checks and infrastructure
+
+Run the smoke-check regression tests (no network or Azure):
+
+```bash
+python -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+```
+
+When `infra/` changed, also compile Bicep:
 
 ```bash
 az bicep build --file infra/main.bicep --stdout > /dev/null

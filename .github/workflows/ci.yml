@@ -116,6 +116,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+      - name: Test deployment smoke checks
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
       - name: Compile and lint Bicep (warnings are errors)
         run: |
           az bicep install

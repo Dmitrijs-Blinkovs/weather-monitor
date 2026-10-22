@@ -152,12 +152,15 @@ Failure handling:
 | Response larger than 64 KB, network error | failed attempt "Request failed: ...", API key redacted |
 | Timeout / circuit open (resilience pipeline) | failed attempt, no status code |
 | Unexpected exception in the provider | caught by the service, failed attempt "Unexpected error (Type)"; the exception text is only logged |
-| Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved within a 10 s budget of their own that the host's cancellation does not interrupt (also when it arrives during the save), then the cancellation is reported to the runtime; no retry, so an uncertain commit cannot store a run twice |
+| Cancellation (host shutdown, function timeout) | finished cities keep their result, unfinished ones become failed attempts ("Cancelled before completion"); saved within a 10 s budget of their own that the host's cancellation does not interrupt (also when it arrives during the save), then the cancellation is reported to the runtime; no extra ingestion-level retry (EF still retries transient SQL errors, so exactly-once storage is not guaranteed) |
 | Database unavailable or rejects the data (full, schema mismatch) | SQL retries transient errors (3 times, at most 5 s apart); then an error log "Storing N fetch attempts failed", the invocation fails (the runtime logs it too) and the next minute retries. The attempts are not counted in the metrics, so the "no weather data" alert fires |
 | `dt` outside the DateTime range | failed attempt "Observation time out of range" (checked before the domain sees it) |
 
 Resilience (`AddStandardResilienceHandler`): 10 s per attempt, 2 retries with backoff for transient errors (5xx, 408,
-429, timeouts), 30 s total per city; the circuit breaker opens for 45 s when at least half of at least 6 calls within
+429, timeouts), 30 s total per city (`OpenWeatherMap:RequestTimeout`; each attempt capped at a third). `HttpClient.Timeout`
+enforces the same budget across the entire request,
+including response-body buffering after the resilience handler returns. It is configured last because the standard
+handler otherwise disables it. The circuit breaker opens for 45 s when at least half of at least 6 calls within
 2 minutes failed (tuned for 3 calls a minute - the defaults would never trip). The Functions `functionTimeout` of 55 s
 bounds a whole run below the one-minute schedule.
 
@@ -295,6 +298,7 @@ src/
 | `Weather:Cities` (`[{ Name, CountryCode }]`) | Functions | London/GB, Rome/IT, Riga/LV in `appsettings.json` |
 | `OpenWeatherMap:ApiKey` | Functions | user secrets locally; Key Vault reference in Azure. Required (validated on start) |
 | `OpenWeatherMap:BaseUrl` | Functions | `https://api.openweathermap.org/`; must be an absolute https URL |
+| `OpenWeatherMap:RequestTimeout` | Functions | `00:00:30`; the whole budget per city (retries and response body), 1-40 s so the 10 s save still fits the 55 s function timeout; each attempt is capped at a third |
 | `Retention:Days` / `Retention:BatchSize` | Functions | 90 (0 disables; at most 3,650) / 5,000 |
 | `RateLimiting:PermitsPerMinute` | Web | 120 per client |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | both | unset locally; set by the Azure templates |

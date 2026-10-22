@@ -9,8 +9,8 @@ using WeatherMonitor.Domain;
 namespace WeatherMonitor.Infrastructure.OpenWeatherMap;
 
 /// <summary>
-/// Calls the OpenWeatherMap "current weather" endpoint. Retries and timeouts are handled by the
-/// resilience pipeline configured on the <see cref="HttpClient"/>; this class turns every outcome into a result.
+/// Calls the OpenWeatherMap "current weather" endpoint. Retries and per-attempt timeouts use the
+/// resilience pipeline; HttpClient.Timeout also bounds response-body buffering. This class maps expected failures to results.
 /// </summary>
 internal sealed class OpenWeatherMapClient(HttpClient httpClient, IOptions<OpenWeatherMapOptions> options)
     : IWeatherProvider

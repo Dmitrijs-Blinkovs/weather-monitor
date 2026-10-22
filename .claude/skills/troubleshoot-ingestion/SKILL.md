@@ -36,7 +36,7 @@ FROM FetchAttempts WHERE IsSuccess = 0 ORDER BY Id DESC;
 | 401 `Invalid API key` | key not activated yet (up to ~2 h) or wrong | wait / user re-sets the key |
 | 404 `city not found` | misspelt `Name` or wrong `CountryCode` | fix `Weather:Cities` |
 | 429 | rate limit (60/min on free plan) shared with another app | reduce load, wait |
-| 5xx, or null + a timeout message from the resilience pipeline (10 s per attempt, 30 s in total) | provider trouble; resilience already retried | transient - confirm the next minutes recover |
+| 5xx, or null + a timeout: the resilience pipeline's message (10 s per attempt, 30 s in total) or `Request timed out` (the 30 s `HttpClient.Timeout`, e.g. a response body that stalls) | provider trouble; resilience already retried | transient - confirm the next minutes recover |
 | 200 + `missing one of the required fields` / `not valid JSON` | provider response changed | inspect a raw payload, update `OpenWeatherMapResponse` / `TryParse` and its tests |
 | 200 + `Unexpected content type` | an HTML error page from a proxy or captive portal, or a wrong `BaseUrl` | check `OpenWeatherMap:BaseUrl` and the network path |
 | 200 + `Implausible temperatures: ...` | units changed (Kelvin/Fahrenheit) or corrupted data | check `units=metric` in the request and a raw response |

@@ -71,6 +71,11 @@ PowerShell as the client. Absolute numbers depend on the machine; the growth bet
 - At 31 days (133,920 attempts, 264 MB) the numbers were the same or lower except the counts: fetch-log page 1 15 ms,
   cities 25 ms. Requests bounded by a time range (history, readings) do not grow with the table at all.
 
+Re-measured on 21 Oct 2026 after the history query changed from `DISTINCT` to `GROUP BY ... MAX(Id)` (so that a
+revised observation shows its latest version), on 31 days of data: the 31-day history took 181 ms median (176 ms
+before the change), 7 days 40 ms (44 ms before); with 64 concurrent clients, 320 x `200` at 46 requests/s. No
+noticeable regression in this measurement. The 90-day table above predates that change and was not repeated.
+
 ### Concurrency (90 days)
 
 | Load | Result |

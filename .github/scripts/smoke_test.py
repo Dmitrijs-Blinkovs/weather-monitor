@@ -1,10 +1,12 @@
-"""Deployment smoke test: the new release must have fetched every configured city.
+"""Deployment smoke test: every configured city must be fetched after deployment completes.
 
 /health alone is not enough: right after a deployment it can still be Healthy from fetches made by the previous
 release. So this waits until /health reports Healthy AND every city in the shipped configuration has a successful fetch
-logged after the deployment started.
+started after deployment completed. The watermark must be captured after deploying Functions;
+otherwise the previous worker can satisfy the check while the packages are being uploaded.
+This is a post-deployment freshness check, not an attestation of the running binary.
 
-Usage: python smoke_test.py <web-url> <deployment-start-utc, e.g. 2026-10-21T09:00:00Z> <functions appsettings.json>
+Usage: python smoke_test.py <web-url> <deployment-completed-utc, e.g. 2026-10-21T09:00:00Z> <functions appsettings.json>
 """
 
 import json

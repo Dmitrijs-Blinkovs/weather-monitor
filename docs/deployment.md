@@ -124,7 +124,7 @@ skipped until the repository variable `AZURE_ENV_NAME` exists, and fails with a 
 4. Optional repository variables: `WEB_SKU_NAME` (`B1` default, or `F1`), `ALERT_EMAIL`.
 5. Merge to `main`. The workflow builds the packages in a job without any credential, waits for the approval, then
    provisions, deploys the packages built from that commit and smoke-tests the release (`.github/scripts/smoke_test.py`: within 5 minutes `/health` must report `Healthy` and every
-   city in `appsettings.json` must have a successful fetch logged after the deployment started).
+   city in `appsettings.json` must have a successful fetch logged with an attempt start time after Functions deployment completed).
 
 ## Operations
 

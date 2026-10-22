@@ -121,22 +121,23 @@ jobs:
           OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
         run: azd provision --no-prompt
 
-      - name: Record the deployment start
-        run: echo "DEPLOY_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-
       - name: Deploy the packages built from this commit
         run: |
           azd deploy web --from-package packages/web.zip --no-prompt
           azd deploy functions --from-package packages/functions.zip --no-prompt
+
+      # The previous worker can still write while deployment is in progress. Only accept attempts started later.
+      - name: Record deployment completion
+        run: echo "DEPLOY_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Read outputs
         id: outputs
         run: echo "web_url=$(azd env get-value WEB_URL)" >> "$GITHUB_OUTPUT"
 
       # Healthy (database reachable, every city fresh) AND a successful fetch of every shipped city after the
-      # deployment started: proves the new release's chain timer -> OpenWeatherMap -> database -> web app, not the
-      # previous release's data.
+      # deployment completed: checks timer -> OpenWeatherMap -> database -> web app without accepting data written
+      # by the previous release during deployment. This checks freshness, not the identity of the executing binary.
       - name: Smoke test
         env:
           WEB_URL: ${{ steps.outputs.outputs.web_url }}
-        run: python3 .github/scripts/smoke_test.py "$WEB_URL" "$DEPLOY_STARTED_AT" src/WeatherMonitor.Functions/appsettings.json
+        run: python3 .github/scripts/smoke_test.py "$WEB_URL" "$DEPLOY_COMPLETED_AT" src/WeatherMonitor.Functions/appsettings.json

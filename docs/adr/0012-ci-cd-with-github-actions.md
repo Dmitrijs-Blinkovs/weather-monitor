@@ -1,6 +1,6 @@
 # 0012. CI/CD with GitHub Actions, azd and OpenID Connect
 
-- Status: Accepted
+- Status: Accepted (partly superseded by [0017](0017-request-budget-and-deployment-freshness.md))
 - Date: 2026-10-19
 
 ## Context

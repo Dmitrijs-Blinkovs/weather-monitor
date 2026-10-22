@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 using WeatherMonitor.Application;
 using WeatherMonitor.Application.History;
@@ -43,6 +44,31 @@ public sealed class CompositionTests
 
         client.MaxResponseContentBufferSize.ShouldBe(DependencyInjection.MaxWeatherResponseBytes);
         client.BaseAddress.ShouldBe(new Uri("https://api.openweathermap.org/"));
+    }
+
+    [Fact]
+    public void In_production_a_city_request_has_30_seconds_in_total_also_for_reading_the_body_and_10_per_attempt()
+    {
+        using var provider = BuildFunctionServices(FunctionSettings);
+
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(Application.Abstractions.IWeatherProvider));
+        var resilience = provider.GetRequiredService<IOptionsMonitor<HttpStandardResilienceOptions>>()
+            .Get($"{nameof(Application.Abstractions.IWeatherProvider)}-standard");
+
+        client.Timeout.ShouldBe(TimeSpan.FromSeconds(30));
+        resilience.TotalRequestTimeout.Timeout.ShouldBe(TimeSpan.FromSeconds(30));
+        resilience.AttemptTimeout.Timeout.ShouldBe(TimeSpan.FromSeconds(10));
+    }
+
+    [Theory]
+    [InlineData("00:00:00")]
+    [InlineData("00:00:41")]
+    public void A_request_budget_that_would_not_leave_time_to_save_the_run_fails_options_validation(string requestTimeout)
+    {
+        var settings = new Dictionary<string, string?>(FunctionSettings) { ["OpenWeatherMap:RequestTimeout"] = requestTimeout };
+        using var provider = BuildFunctionServices(settings);
+
+        Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<OpenWeatherMapOptions>>().Value);
     }
 
     [Fact]

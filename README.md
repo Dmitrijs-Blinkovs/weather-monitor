@@ -18,7 +18,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | Graph contains all cities | One Recharts chart, one line and band per city |
 | Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 210 .NET tests (xUnit v3), 67 front-end unit/component tests (Vitest), 22 browser tests (Playwright) |
+| Unit tests | 215 .NET tests (xUnit v3), 67 front-end unit/component tests (Vitest), 22 browser tests (Playwright), 7 deployment smoke-check tests (Python) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -109,7 +109,7 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
 - **Unambiguous cities.** A bare `q=Rome` resolves to Rome, Georgia, USA, so every configured city carries an ISO
   country code and is requested as `q=Rome,IT`. The plain name ("Rome") is what the log and the chart show.
 - **Resilience.** `Microsoft.Extensions.Http.Resilience` adds retries, a circuit breaker and timeouts (10 s per attempt,
-  30 s in total per city); the Functions `functionTimeout` of 55 s bounds a whole run below the one-minute schedule.
+  30 s in total per city, with `HttpClient.Timeout` also covering response-body buffering); the Functions `functionTimeout` of 55 s bounds a whole run below the one-minute schedule.
 - **The API key stays out of logs and stored data.** It has to travel in the query string, so the default `HttpClient`
   request logging (which writes URIs) is removed for this client, provider error messages and stored error bodies are
   redacted, and unexpected exception texts are logged but never stored.
@@ -263,6 +263,9 @@ cd src/weather-monitor.client && npm test
 cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 ```
 
+Run deployment-check tests from the repository root with `python -B -m unittest discover -s .github/scripts -p 'test_*.py' -v`
+(Python standard library only).
+
 - **Application** - ingestion (parallel fetch, failure isolation, cancellation, timing, country codes, metrics), history
   grouping and summary, retention batches, options validation, domain invariants (attempts, observations, query
   limits), error-text sanitising, and the dependency rule between the layers.
@@ -283,11 +286,11 @@ cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e
 
 - **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and on pull requests to `main`: .NET build (high/critical NuGet
   advisories fail it) and tests with coverage summary, `npm audit`, front-end lint/tests/coverage/build, Playwright
-  browser tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
+  browser tests, deployment smoke-check unit tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
 - **CD** ([deploy.yml](.github/workflows/deploy.yml)) after a green CI run on `main` once Azure is configured: a build job
   without credentials packages both apps; the deploy job (OpenID Connect, `production` environment, which is where required reviewers are configured)
   provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` and every city to have a
-  successful fetch after the deployment started ([smoke_test.py](.github/scripts/smoke_test.py)) - see
+  successful fetch with an attempt start time after Functions deployment completed ([smoke_test.py](.github/scripts/smoke_test.py)) - see
   [docs/deployment.md](docs/deployment.md).
 - **Supply chain:** actions pinned to commit SHAs, lockfiles and central package versions, Dependabot for NuGet, npm and
   GitHub Actions with a 3-day cooldown.
@@ -317,6 +320,7 @@ controllers' XML comments; neither exists outside development.
 | `ConnectionStrings:WeatherDb` | Functions, Web | SQL Server connection string |
 | `OpenWeatherMap:ApiKey` | Functions | API key (user secrets locally, Key Vault reference in Azure) |
 | `OpenWeatherMap:BaseUrl` | Functions | Defaults to `https://api.openweathermap.org/` |
+| `OpenWeatherMap:RequestTimeout` | Functions | Whole time budget per city, retries and response body included (`00:00:30`; 1-40 s, each attempt capped at a third) |
 | `Weather:Cities` | Functions | Cities to fetch as `{ "Name": "Rome", "CountryCode": "IT" }`; London/GB, Rome/IT, Riga/LV in `appsettings.json` |
 | `Database:ApplyMigrationsOnStartup` | Functions, Web | Apply EF Core migrations on start (on in development; in Azure on for the function only) |
 | `Database:ReadOnlyIdentity:Name` / `:ClientId` | Functions | Managed identity that gets `db_datareader` after migrating (the web app's identity in Azure); unset locally |

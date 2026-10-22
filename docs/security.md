@@ -46,7 +46,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | API7 Server-side request forgery | OK | See A10. |
 | API8 Security misconfiguration | OK | See A05; unknown `/api/*` routes return 404, wrong verbs 405. |
 | API9 Improper inventory management | OK | One API version, documented in the README and, in development, in the OpenAPI document and its Scalar reference. |
-| API10 Unsafe consumption of APIs | OK | 64 KB response cap, `application/json` required, required fields and plausible temperatures validated, error texts redacted and sanitised, bounded retries/timeouts and a tuned circuit breaker. |
+| API10 Unsafe consumption of APIs | OK | 64 KB response cap, `application/json` required, required fields and plausible temperatures validated, error texts redacted and sanitised, bounded retries, a request budget (30 s by default) that also covers reading the response body, and a tuned circuit breaker. |
 
 ## OWASP Top 10 CI/CD Security Risks
 

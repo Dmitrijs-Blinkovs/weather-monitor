@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 using WeatherMonitor.Application.Abstractions;
 using WeatherMonitor.Application.FetchLog;
@@ -78,28 +79,36 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddHttpClient<IWeatherProvider, OpenWeatherMapClient>((serviceProvider, client) =>
+        var weatherClient = services.AddHttpClient<IWeatherProvider, OpenWeatherMapClient>((serviceProvider, client) =>
             {
                 var baseUrl = serviceProvider.GetRequiredService<IOptions<OpenWeatherMapOptions>>().Value.BaseUrl;
                 client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
                 client.MaxResponseContentBufferSize = MaxWeatherResponseBytes;
             })
             // The API key travels in the query string, and the default HttpClient logging writes full URIs.
-            .RemoveAllLoggers()
-            .AddStandardResilienceHandler(resilience =>
-            {
-                // A run is scheduled every minute, so the whole call (with retries) must finish well before the next one.
-                resilience.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
-                resilience.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
-                resilience.Retry.MaxRetryAttempts = 2;
+            .RemoveAllLoggers();
 
-                // Tuned for a handful of calls per minute (the default needs 100 calls per 30 s and never opens):
-                // after two failing runs the circuit opens, the next run fails fast, the one after probes again.
-                resilience.CircuitBreaker.MinimumThroughput = 6;
-                resilience.CircuitBreaker.FailureRatio = 0.5;
-                resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(2);
-                resilience.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(45);
-            });
+        weatherClient.AddStandardResilienceHandler().Configure((resilience, serviceProvider) =>
+        {
+            // A run is scheduled every minute, so the whole call (with retries) must finish well before the next one:
+            // up to three attempts share the request budget, each capped at a third (30 s by default, 10 s each).
+            var requestTimeout = serviceProvider.GetRequiredService<IOptions<OpenWeatherMapOptions>>().Value.RequestTimeout;
+            resilience.TotalRequestTimeout.Timeout = requestTimeout;
+            resilience.AttemptTimeout.Timeout = requestTimeout / 3;
+            resilience.Retry.MaxRetryAttempts = 2;
+
+            // Tuned for a handful of calls per minute (the default needs 100 calls per 30 s and never opens):
+            // after two failing runs the circuit opens, the next run fails fast, the one after probes again.
+            resilience.CircuitBreaker.MinimumThroughput = 6;
+            resilience.CircuitBreaker.FailureRatio = 0.5;
+            resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(2);
+            resilience.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(45);
+        });
+
+        // Register last: the standard handler disables HttpClient.Timeout. Restore it to the same budget so it also
+        // covers reading the response body, which happens outside that handler after the headers arrive.
+        weatherClient.ConfigureHttpClient((serviceProvider, client) =>
+            client.Timeout = serviceProvider.GetRequiredService<IOptions<OpenWeatherMapOptions>>().Value.RequestTimeout);
 
         return services;
     }

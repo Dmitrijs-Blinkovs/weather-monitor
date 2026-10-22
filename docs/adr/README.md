@@ -9,7 +9,7 @@ of rewriting history; a record may also carry a dated amendment.
 |---|---|---|
 | [0001](0001-layered-architecture.md) | Clean/onion layering with ports in Application | Accepted |
 | [0002](0002-raw-payload-plus-extracted-columns.md) | Store the raw payload verbatim plus extracted query columns | Accepted |
-| [0003](0003-log-every-attempt-isolate-failures.md) | Log every attempt; expected failures are results, not exceptions | Accepted |
+| [0003](0003-log-every-attempt-isolate-failures.md) | Log every attempt; expected failures are results, not exceptions | Accepted (partly superseded by 0017) |
 | [0004](0004-distinct-observations-on-read.md) | Store every minute, collapse duplicate observations on read | Accepted |
 | [0005](0005-cities-with-country-codes.md) | Configure cities with ISO country codes | Accepted |
 | [0006](0006-utc-datetime.md) | UTC `DateTime` with an EF converter instead of `DateTimeOffset` | Accepted |
@@ -18,11 +18,12 @@ of rewriting history; a record may also carry a dated amendment.
 | [0009](0009-test-strategy.md) | Test without external dependencies | Accepted |
 | [0010](0010-accessible-chart.md) | Validated colour palette, colour per city, value-first tooltip | Accepted |
 | [0011](0011-azure-hosting-and-identity.md) | Azure hosting: Flex Consumption, App Service, Azure SQL and one managed identity | Accepted (identity part superseded by 0015) |
-| [0012](0012-ci-cd-with-github-actions.md) | CI/CD with GitHub Actions, azd and OpenID Connect | Accepted |
+| [0012](0012-ci-cd-with-github-actions.md) | CI/CD with GitHub Actions, azd and OpenID Connect | Accepted (partly superseded by 0017) |
 | [0013](0013-browser-tests-with-playwright.md) | Browser tests with Playwright against the production build and a mocked API | Accepted |
 | [0014](0014-data-retention.md) | Purge history older than 90 days, daily and in batches | Accepted |
 | [0015](0015-least-privilege-identities.md) | One managed identity per app, read-only database access for the web app | Accepted (supersedes part of 0011) |
-| [0016](0016-observability.md) | Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert | Accepted |
+| [0016](0016-observability.md) | Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert | Accepted (partly superseded by 0017) |
+| [0017](0017-request-budget-and-deployment-freshness.md) | Full HTTP request budget and post-deployment freshness watermark | Accepted (supersedes parts of 0003, 0012 and 0016) |
 
 Template for a new record (`NNNN-short-title.md`):
 
