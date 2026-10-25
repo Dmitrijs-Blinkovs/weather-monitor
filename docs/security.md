@@ -13,7 +13,7 @@ control changes.
 | Integrity of stored data | wrong city resolved, malformed or implausible provider data | explicit country codes, content-type check, strict parsing, plausibility checks (invalid data becomes a failed attempt) |
 | Browser users | XSS, clickjacking, MIME sniffing, referrer leakage | React escaping, no HTML sinks, strict CSP (verified in a real browser), `frame-ancestors 'none'`, `nosniff`, referrer policy, headers also on error responses |
 | Cloud resources | credential theft, lateral movement, unaudited access | one managed identity per app with least privilege, Entra-only SQL, shared keys and basic-auth publishing disabled, the function's site closed to inbound traffic, Key Vault and SQL audit logs |
-| Build and release | tampered dependencies or actions, stolen deployment credentials | npm lockfile, CPM, NuGet/npm audit gates, Dependabot with cooldown, actions pinned to SHAs, OIDC, credential-free build job, protected `production` environment |
+| Build and release | tampered dependencies or actions, stolen deployment credentials | npm lockfile, CPM, NuGet/npm audit gates, Dependabot with cooldown (version updates paused, ADR 0019), actions pinned to SHAs, OIDC, credential-free build job, protected `production` environment |
 
 Out of scope by design: user authentication and authorisation. The application shows public weather data read-only;
 there are no write endpoints and no personal data. If that changes, add Entra ID authentication (App Service
@@ -28,7 +28,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | A03 Injection | OK | EF Core LINQ only; the single raw statement (read-only grant) is parameterised and uses `QUOTENAME`; React escapes all output; strict CSP; control characters stripped from stored error texts (log forging). |
 | A04 Insecure design | OK | Failure isolation per city, validated configuration, caps on every input, retention purge (ADR 0014), cancellation-safe logging. |
 | A05 Security misconfiguration | OK | Security headers on every response including 500s; OpenAPI and the Scalar API reference only in development (their relaxed CSP, inline code allowed, applies under `/scalar` in development only); RFC 7807 errors without details; `AllowedHosts` restricted in Azure; FTP/basic-auth publishing disabled. |
-| A06 Vulnerable and outdated components | OK | NuGet Audit (direct + transitive) fails the build on high/critical; `npm audit --omit=dev --audit-level=high` in CI; Dependabot weekly with a 3-day cooldown. |
+| A06 Vulnerable and outdated components | OK | NuGet Audit (direct + transitive) fails the build on high/critical; `npm audit --omit=dev --audit-level=high` in CI; Dependabot configured weekly with a 3-day cooldown, its version updates paused since submission (ADR 0019), so the audits are what catches known vulnerabilities. |
 | A07 Identification and authentication failures | n/a / OK | No user accounts; services authenticate with managed identities (no stored credentials). |
 | A08 Software and data integrity failures | OK | Lockfile + `npm ci`, CPM, actions pinned to commit SHAs, checkout without persisted credentials, OIDC deployments, build job without credentials, environment approval. |
 | A09 Logging and monitoring failures | OK | Every fetch attempt stored; OpenTelemetry traces/metrics/logs to Application Insights; Key Vault and SQL audit logs; per-city data-freshness health check; alert when a city has had no successful fetch for 15 minutes (ADR 0016). |
@@ -53,7 +53,7 @@ authentication or `Microsoft.Identity.Web`) before exposing anything non-public.
 | Risk | How |
 |---|---|
 | CICD-SEC-1/2 Flow control, identity and access | Automatic deploys only after green CI on `main`, manual runs only from `main`; `production` environment with required reviewers; one federated credential with the environment subject (docs/deployment.md). |
-| CICD-SEC-3 Dependency chain abuse | npm lockfile, CPM, audit gates, Dependabot cooldown; the job that runs third-party build code has no credentials. |
+| CICD-SEC-3 Dependency chain abuse | npm lockfile, CPM, audit gates, Dependabot cooldown (version updates paused, ADR 0019); the job that runs third-party build code has no credentials. |
 | CICD-SEC-4 Poisoned pipeline execution | No `pull_request_target`; PR workflows get a read-only token and no secrets; the `workflow_run` deployment accepts only CI runs of pushes to this repository (its branch filter alone would also match a fork's branch named `main`). |
 | CICD-SEC-6 Insufficient credential hygiene | No stored Azure secrets (OIDC); the API key is an environment secret exposed to one step. |
 | CICD-SEC-8 Ungoverned third-party services | Actions pinned to commit SHAs; only well-known publishers. |

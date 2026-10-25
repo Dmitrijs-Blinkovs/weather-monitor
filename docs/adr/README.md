@@ -24,6 +24,7 @@ replaces the part that changed and link it from the record it changes.
 | [0016](0016-observability.md) | Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert |
 | [0017](0017-request-budget-and-deployment-freshness.md) | Full HTTP request budget and post-deployment freshness watermark |
 | [0018](0018-opt-in-sql-server-tests.md) | Opt-in tests on a real SQL Server (two hosts creating the database) |
+| [0019](0019-dependabot-version-updates-paused.md) | Pause Dependabot version updates; audits still gate known vulnerabilities |
 
 Template for a new record (`NNNN-short-title.md`):
 

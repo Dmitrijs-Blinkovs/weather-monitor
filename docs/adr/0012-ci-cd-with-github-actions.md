@@ -17,8 +17,8 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
   (`azd pipeline config`), the `production` environment for approvals, and a smoke test (`Healthy`, plus a new successful fetch of every city
   after both deployments completed, ADR 0017). Manual trigger
   until the first deployment has been made.
-- **Dependabot** updates NuGet, npm (both grouped) and GitHub Actions weekly; a pull request template carries the definition
-  of done.
+- **Dependabot** updates NuGet, npm (both grouped) and GitHub Actions weekly (version updates paused,
+  [0019](0019-dependabot-version-updates-paused.md)); a pull request template carries the definition of done.
 
 ## Consequences
 
@@ -33,9 +33,10 @@ repeatable and must not depend on long-lived Azure credentials stored in GitHub.
   malicious npm lifecycle script or MSBuild target therefore never sees an Azure token or the API key.
 - Deployments run after a green CI run on `main` (`workflow_run`) or manually from `main`, and are skipped until the
   Azure variables exist. The API key is an environment secret of `production`, visible to the provision step only.
-- All actions are pinned to commit SHAs (Dependabot updates them), checkouts do not persist credentials, high and
-  critical NuGet advisories fail the build, `npm audit` gates production dependencies, Dependabot waits 3 days before
-  adopting a release, and a CI job applies and rolls back all migrations on a real SQL Server.
+- All actions are pinned to commit SHAs (Dependabot updates them while its version updates run), checkouts do not
+  persist credentials, high and critical NuGet advisories fail the build, `npm audit` gates production dependencies,
+  Dependabot waits 3 days before adopting a release, and a CI job applies and rolls back all migrations on a real SQL
+  Server.
 
 ## Alternatives considered
 

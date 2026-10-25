@@ -300,7 +300,8 @@ Run deployment-check tests from the repository root with `python -B -m unittest 
   successful fetch with an attempt start time after Functions deployment completed ([smoke_test.py](.github/scripts/smoke_test.py)) - see
   [docs/deployment.md](docs/deployment.md).
 - **Supply chain:** actions pinned to commit SHAs, lockfiles and central package versions, Dependabot for NuGet, npm and
-  GitHub Actions with a 3-day cooldown.
+  GitHub Actions with a 3-day cooldown (version updates paused since submission,
+  [ADR 0019](docs/adr/0019-dependabot-version-updates-paused.md)).
 
 ## API
 

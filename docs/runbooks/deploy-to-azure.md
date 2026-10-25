@@ -30,7 +30,8 @@ and ADRs 0011, 0012, 0015, 0016.
   `npm`, `dotnet build/publish` or any other build tooling - it deploys the build job's packages (`--from-package`).
 - Keep the `workflow_run` guard (`event == 'push'` and `head_repository == github.repository`): the branch filter alone
   matches a fork's branch named `main`.
-- Pin new actions to a full commit SHA with the version as a comment; Dependabot keeps them current.
+- Pin new actions to a full commit SHA with the version as a comment; Dependabot keeps them current once its version
+  updates are resumed (ADR 0019).
 
 ## First deployment (user present)
 
