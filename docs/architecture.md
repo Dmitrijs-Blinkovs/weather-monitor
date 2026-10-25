@@ -119,7 +119,10 @@ IX (IsSuccess, AttemptedAtUtc)
 - History older than `Retention:Days` (90) is deleted daily (section 6).
 - Schema changes go through EF Core migrations in `Infrastructure/Persistence/Migrations`
   (see `docs/runbooks/add-ef-migration.md`). Hosts apply them on start when `Database:ApplyMigrationsOnStartup=true`;
-  EF Core 9+ takes a database lock, so both hosts can do so concurrently. In Azure only the function migrates; it then
+  EF Core 9+ takes a lock inside the database, so both hosts can do so concurrently. The lock cannot cover creating a
+  missing database: when both hosts create it at once, the loser gets SQL error 1801, clears its connection pool (which
+  still replays "cannot open database") and migrates again ([ADR 0018](adr/0018-opt-in-sql-server-tests.md)).
+  In Azure only the function migrates; it then
   grants the web app's identity `db_datareader` (`Database:ReadOnlyIdentity`, idempotent T-SQL with `QUOTENAME`).
 
 ## 5. Ingestion flow (write side)
@@ -236,7 +239,7 @@ src/
   test/                        setup.ts, fixtures.ts, renderWithProviders.tsx
 ```
 
-- **Data:** TanStack Query. Rolling presets (1 h, 6 h, 24 h, 7 d) are re-evaluated against "now" and refetched every
+- **Data:** TanStack Query. Rolling presets (1 h - the default, `DEFAULT_PRESET_ID`; 6 h, 24 h, 7 d) are re-evaluated against "now" and refetched every
   60 s; their `to` is rounded up to the next whole minute, so all viewers within a minute send the same URL and hit the
   server's output cache. A custom from/to range is fixed. The log refreshes every 30 s, the readings table too for rolling presets. Previous
   data stays visible (dimmed) while a new filter loads.
@@ -312,15 +315,17 @@ an out-of-range retention stops the host with a message that says what to set.
 | Project | What it proves | How |
 |---|---|---|
 | Application.Tests | domain invariants (`FetchAttempt`, `CurrentWeather`) and error-text sanitising; query and paging limits; the dependency rule; ingestion (parallel, isolation of failures, cancellation keeps finished cities, timing, country codes, no exception text stored, metrics); history grouping/summary/duplicate times; retention batches; options validation | pure unit tests, NSubstitute, `FakeTimeProvider`, `MetricCollector` |
-| Infrastructure.Tests | the data-model contract (every text column has the length the domain validates, datetime2, float, char(2)); OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild` |
+| Infrastructure.Tests | the data-model contract (every text column has the length the domain validates, datetime2, float, char(2)); OpenWeatherMap request/parse/content type/plausibility/error mapping/timeouts/redaction/https options; repository (incl. batched delete with cascade) and readers incl. `DISTINCT`, paging, filters, UTC round-trip; migrations in sync with the model; DI graphs of both hosts; a host that loses the race to create the database still migrates | stub `HttpMessageHandler`; in-memory SQLite with the real model; `HasPendingModelChanges`; `ValidateOnBuild`; opt-in SQL Server with a command interceptor ([ADR 0018](adr/0018-opt-in-sql-server-tests.md)) |
 | Web.Tests | controllers depend only on Application ports; routing, binding, validation (problem details, page and range caps), JSON shape, SPA fallback vs. API 404/405, security headers (also on 500), rate limiting (429), liveness vs. readiness, output cache and compression, the development-only OpenAPI document and Scalar reference with their CSP | `WebApplicationFactory` with substituted ports and a temporary web root |
 | Functions.Tests | both timer bindings (every minute, daily; not on startup), the shipped configuration (cities, retention), delegation and failure propagation | reflection on the binding attributes; the real `appsettings.json` |
 | client (Vitest) | date-range rules and rounding, English formatting, chart shaping, downsampling, tooltip, filters, the readings and log tables, the attempt-details dialog, paging cap, error boundary, both pages against a fake API | Testing Library, jsdom |
 | client (Playwright) | both pages in Chromium against the production build: chart with all cities, tooltip, presets and custom ranges (time zone), readings table/paging, log filters/paging, attempt details, error state, English UI in a Latvian browser, accessibility, no CSP violations | mocked API (`page.route`), axe-core ([ADR 0013](adr/0013-browser-tests-with-playwright.md)) |
 
-Nothing in the test suite needs SQL Server, Azurite, network access or an API key. CI also collects code coverage
+Nothing in the test suite needs Azurite, network access or an API key, and only the opt-in `Category=SqlServer` tests
+need SQL Server (skipped unless `WEATHERMONITOR_TEST_SQLSERVER` is set). CI also collects code coverage
 (.NET: Microsoft.Testing.Platform coverage, summary on the run page; front end: Vitest v8 coverage) and, in a separate
-job, applies and rolls back every migration on SQL Server 2022 in a container.
+job, applies and rolls back every migration on SQL Server 2022 in a container and runs the SQL Server tests there
+(a host that loses the race to create a missing database still migrates).
 
 ## 12. Deployment
 

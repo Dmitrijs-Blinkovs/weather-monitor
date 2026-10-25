@@ -12,7 +12,7 @@ using WeatherMonitor.Infrastructure.Persistence;
 namespace WeatherMonitor.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WeatherDbContext))]
-    [Migration("20261020112007_InitialCreate")]
+    [Migration("20261025160636_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />

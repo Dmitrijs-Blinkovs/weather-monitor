@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colorForCity } from './seriesColors';
+import { colorForCity, knownCities } from './seriesColors';
 
 describe('colorForCity', () => {
   const allCities = ['London', 'Riga', 'Rome'];
@@ -19,5 +19,15 @@ describe('colorForCity', () => {
 
   it('uses the neutral slot for an unknown city instead of inventing a hue', () => {
     expect(colorForCity('Paris', allCities)).toBe('var(--series-other)');
+  });
+});
+
+describe('knownCities', () => {
+  it('takes the cities of the current result while the list of known cities is still empty', () => {
+    expect(knownCities([], ['Rome', 'London', 'Riga'])).toEqual(['London', 'Riga', 'Rome']);
+  });
+
+  it('merges both lists alphabetically without duplicates, whatever the case', () => {
+    expect(knownCities(['London', 'Rome'], ['riga', 'rome'])).toEqual(['London', 'riga', 'Rome']);
   });
 });

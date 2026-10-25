@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,7 +11,9 @@ namespace WeatherMonitor.Infrastructure.Persistence;
 /// Applies pending EF Core migrations when the host starts. Enabled with <c>Database:ApplyMigrationsOnStartup</c>.
 /// It runs in <see cref="StartingAsync"/>, before any hosted service's <c>StartAsync</c> - including the Functions
 /// worker that starts accepting timer invocations - so the first run never meets a database without tables.
-/// EF Core takes a database lock while migrating, so concurrent starts are safe.
+/// Both hosts may start together (Web + Functions in development). EF Core serialises migrations with a lock inside the
+/// database, but a missing database is created before that lock can exist: the host that loses that race gets SQL
+/// error 1801 and migrates again, now against the existing database and under the lock.
 /// When <c>Database:ReadOnlyIdentity</c> is configured (Azure), it also grants that identity read-only access.
 /// </summary>
 internal sealed partial class DatabaseMigrationService(
@@ -18,18 +21,39 @@ internal sealed partial class DatabaseMigrationService(
     IOptions<DatabaseOptions> options,
     ILogger<DatabaseMigrationService> logger) : IHostedLifecycleService
 {
+    /// <summary>SQL Server error "Database '...' already exists": another host created it a moment ago.</summary>
+    private const int DatabaseAlreadyExists = 1801;
+
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<WeatherDbContext>();
 
         LogApplyingMigrations(logger);
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        await MigrateAsync(dbContext, cancellationToken);
 
         if (options.Value.ReadOnlyIdentity is { IsConfigured: true } reader && dbContext.Database.IsSqlServer())
         {
             LogGrantingReadAccess(logger, reader.Name);
             await GrantReadOnlyAccessAsync(dbContext, reader, cancellationToken);
+        }
+    }
+
+    private async Task MigrateAsync(WeatherDbContext dbContext, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.Database.MigrateAsync(cancellationToken);
+        }
+        catch (SqlException exception) when (exception.Number == DatabaseAlreadyExists)
+        {
+            LogDatabaseCreatedConcurrently(logger);
+
+            // Opening the then-missing database failed a moment ago, and SqlClient replays that failure to this pool
+            // for a few seconds (pool blocking period); EF Core clears the pool only after a CREATE that succeeded.
+            // Without this, the second attempt would see no database again and fail the same way.
+            SqlConnection.ClearPool((SqlConnection)dbContext.Database.GetDbConnection());
+            await dbContext.Database.MigrateAsync(cancellationToken);
         }
     }
 
@@ -71,6 +95,10 @@ internal sealed partial class DatabaseMigrationService(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Applying pending database migrations")]
     private static partial void LogApplyingMigrations(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Another host created the database at the same time; applying the migrations again")]
+    private static partial void LogDatabaseCreatedConcurrently(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Granting read-only database access to {Identity}")]
     private static partial void LogGrantingReadAccess(ILogger logger, string identity);

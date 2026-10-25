@@ -82,7 +82,8 @@ Browser tests (downloads Chromium once, then builds and previews the app itself)
 (cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e)
 ```
 
-Expected: build with 0 warnings; all tests green. None of these need the key, the database or Azure.
+Expected: build with 0 warnings; all tests green, one .NET test skipped (it needs SQL Server; CI runs it, and
+`docs/runbooks/verify-changes.md` shows how to run it on LocalDB). None of these need the key, the database or Azure.
 
 ## 6. Run
 
@@ -101,7 +102,8 @@ dotnet run --project src/WeatherMonitor.Web --launch-profile https
 ```
 
 - The first start of either host creates the `WeatherMonitor` database in LocalDB (migrations run automatically in
-  development).
+  development). If both create it at the same moment, one logs `Failed executing DbCommand` for `CREATE DATABASE`
+  (error 1801) and then `Another host created the database at the same time; applying the migrations again` - expected.
 - The Web host starts Vite (`npm run dev`) itself and the browser at <https://localhost:7180> is forwarded to
   <http://127.0.0.1:5173>. If the browser warns about the certificate, run `dotnet dev-certs https --trust` once.
 - In Visual Studio: pick the **Web + Functions** profile and press F5 (Azurite starts automatically).
@@ -159,7 +161,7 @@ shows a Windows administrator prompt that only you can approve.
 | A city shows the wrong country | Its `CountryCode` is missing or wrong in `Weather:Cities` (a bare `Rome` is Rome, Georgia, USA). Fix it (`docs/runbooks/manage-cities.md`); rows stored earlier keep the old country - reset the local database (below) if that matters. |
 | Build error `MSB3030: Could not copy ... WorkerExtensions ... because it was not found` | The clone path is too deep for Windows' 260-character limit (the Functions build nests long paths). Clone to a short path such as `C:\src\weather-monitor`, or enable long paths in Windows. |
 
-Reset the local database (it is recreated on the next start):
+Reset the local database (it is recreated on the next start; stop both hosts first, Shift+F5 in Visual Studio):
 
 ```bash
 dotnet ef database drop --force --project src/WeatherMonitor.Infrastructure --startup-project src/WeatherMonitor.Infrastructure

@@ -100,6 +100,7 @@ Run from the repository root unless stated otherwise.
 dotnet build WeatherMonitor.slnx                                  # warnings are errors
 dotnet test --solution WeatherMonitor.slnx                        # all .NET tests (Microsoft.Testing.Platform syntax)
 dotnet test --project tests/WeatherMonitor.Web.Tests              # one test project
+WEATHERMONITOR_TEST_SQLSERVER='Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True' dotnet test --project tests/WeatherMonitor.Infrastructure.Tests --filter-trait "Category=SqlServer"   # opt-in SQL Server tests
 cd src/weather-monitor.client && npm ci && npm run lint && npm test && npm run build
 cd src/weather-monitor.client && npm audit --omit=dev --audit-level=high         # as in CI
 cd src/weather-monitor.client && npm run test:e2e:install && npm run test:e2e   # Playwright (builds + previews itself)
@@ -135,7 +136,8 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - Name tests as sentences (`A_failed_city_is_logged_as_a_failure_while_the_others_are_still_stored`).
 - Pass `TestContext.Current.CancellationToken` to anything that takes a token (analyzer xUnit1051 is an error).
 - Persistence tests use in-memory SQLite with the real model (`SqliteTestDatabase`), API tests use
-  `WeatherApiFactory` (real pipeline, substituted services). No test needs SQL Server, network or Azure.
+  `WeatherApiFactory` (real pipeline, substituted services). No test needs network or Azure, and only the opt-in
+  `Category=SqlServer` tests need SQL Server (skipped unless `WEATHERMONITOR_TEST_SQLSERVER` is set; CI sets it).
 
 **Front end**
 - Feature folders (`src/features/<feature>`), shared code in `src/lib`, `src/components`, `src/hooks`, `src/api`.
@@ -149,7 +151,7 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 1. `dotnet build WeatherMonitor.slnx` - 0 warnings, 0 errors.
 2. `dotnet test --solution WeatherMonitor.slnx` and `npm audit --omit=dev --audit-level=high && npm run lint && npm test
    && npm run test:e2e && npm run build` in the client - green (CI runs these, with coverage and a Release build, plus the Bicep
-   build and a migrations up/down job on SQL Server).
+   build and a SQL Server job: migrations up/down and the opt-in `Category=SqlServer` tests).
 3. New behaviour has tests at the lowest layer that can prove it; bugs get a test that fails without the fix.
 4. A data model change has a migration; an API change is reflected in `src/api/types.ts` and the README API table.
 5. A changed design decision has a new ADR in `docs/adr/`, linked from the record it changes; a changed security control is reflected in
@@ -179,6 +181,10 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 - `DateTime` with `Kind=Unspecified` is rejected by the domain and by `UtcDateTimeConverter` (writes and query
   parameters) on purpose: read as local time it would shift by the machine's offset. SQLite cannot order `DateTimeOffset`,
   which is one reason the model uses UTC `DateTime`.
+- In development both hosts migrate on start, so on a missing database both run `CREATE DATABASE` and one gets SQL
+  error 1801. `DatabaseMigrationService` clears that host's connection pool and migrates again; without clearing the
+  pool, the retry still sees no database (SqlClient replays the earlier "cannot open database"). Keep both
+  (ADR 0018). To start from an empty database, stop both hosts before dropping it.
 - xUnit v3 runs on Microsoft.Testing.Platform: use `dotnet test --solution/--project`, not the old VSTest switches.
 - In development the UI is served by Vite on 5173; deep links typed directly on 5180 return 404 (only `/` redirects).
 - Core Tools warns against `func start` for isolated projects; use `dotnet run` (works from any folder).

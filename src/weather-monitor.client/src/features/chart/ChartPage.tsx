@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { PageHeader } from '../../components/PageHeader';
 import { useCities } from '../../hooks/useCities';
-import { resolveRange, type RangeSelection } from '../../lib/dateRange';
+import { DEFAULT_PRESET_ID, resolveRange, type RangeSelection } from '../../lib/dateRange';
 import { formatDateTime } from '../../lib/format';
+import { knownCities } from '../../lib/seriesColors';
 import { useWeatherApi } from '../../api/WeatherApiContext';
 import { CitySummaryCards } from './CitySummaryCards';
 import { DateRangeFilter } from './DateRangeFilter';
@@ -16,7 +17,7 @@ const PRESET_REFRESH_MS = 60_000;
 
 export function ChartPage() {
   const api = useWeatherApi();
-  const [selection, setSelection] = useState<RangeSelection>({ kind: 'preset', presetId: '24h' });
+  const [selection, setSelection] = useState<RangeSelection>({ kind: 'preset', presetId: DEFAULT_PRESET_ID });
   const [showMinMax, setShowMinMax] = useState(true);
   const [showTable, setShowTable] = useState(false);
 
@@ -28,7 +29,7 @@ export function ChartPage() {
     refetchInterval: selection.kind === 'preset' ? PRESET_REFRESH_MS : false,
   });
 
-  const allCities = cities.data ?? history.data?.cities.map((city) => city.city) ?? [];
+  const allCities = knownCities(cities.data ?? [], history.data?.cities.map((city) => city.city) ?? []);
   const data = history.data;
 
   return (

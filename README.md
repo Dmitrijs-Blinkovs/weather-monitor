@@ -16,9 +16,9 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | UI page with the fetch log | `/fetch-log`: filter by city and result, paging, auto-refresh, and per attempt a dialog with the full payload or the full error and response body (loaded on click) |
 | UI page with a chart: min/max temperature, country, city, temperature, last update time | `/temperature`: one chart for all cities with a min/max band, a card per city (country, temperature, min/max, last update), tooltip, and a table of every reading (one row per city per minute, with the provider's last update time) |
 | Graph contains all cities | One Recharts chart, one line and band per city |
-| Date and time filtering of the graph | Presets (1 h, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
+| Date and time filtering of the graph | Presets (1 h - the default, 6 h, 24 h, 7 days) and a custom from/to date **and time** range |
 | SOLID, code quality | Layered architecture, ports and adapters, see below and [docs/architecture.md](docs/architecture.md) |
-| Unit tests | 215 .NET tests (xUnit v3), 67 front-end unit/component tests (Vitest), 22 browser tests (Playwright), 7 deployment smoke-check tests (Python) |
+| Unit tests | 216 .NET tests (xUnit v3; one needs SQL Server and runs in CI, skipped elsewhere unless enabled), 70 front-end unit/component tests (Vitest), 22 browser tests (Playwright), 7 deployment smoke-check tests (Python) |
 | Publish on GitHub | This repository; CI on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)) |
 
 | Must use | How |
@@ -128,8 +128,10 @@ infra/                            Bicep templates for Azure (azure.yaml drives t
   deficiency in light and dark mode. Lines are also labelled directly, the chart can be switched to a table, and both
   pages pass axe-core WCAG 2 A/AA checks.
 - **Database migrations.** EF Core migrations live in Infrastructure. With `Database:ApplyMigrationsOnStartup` the hosts
-  apply them before they start serving (EF Core takes a database lock, so both hosts can do it safely); a test fails if the
-  model changes without a migration, and CI applies and rolls back every migration on a real SQL Server.
+  apply them before they start serving. Both hosts can do it at once: EF Core takes a database lock, and a host that
+  loses the race to create a missing database migrates again ([ADR 0018](docs/adr/0018-opt-in-sql-server-tests.md)).
+  A test fails if the model changes without a migration, and CI applies and rolls back every migration on a real SQL
+  Server.
 - **Bounded growth.** A daily function deletes history older than 90 days in batches (`Retention:Days`,
   [ADR 0014](docs/adr/0014-data-retention.md)); without it the database would grow by ~8,600 rows a day forever.
 - **Observable, including "silent" failures.** Expected failures are values, so a run in which every city fails is still
@@ -274,7 +276,8 @@ Run deployment-check tests from the repository root with `python -B -m unittest 
   limits), error-text sanitising, and the dependency rule between the layers.
 - **Infrastructure** - the OpenWeatherMap client against a stubbed `HttpMessageHandler` (parsing, content type,
   plausibility, error mapping, timeouts, key redaction); repository (including batched deletes) and readers against
-  in-memory SQLite with the real EF Core model; migrations in sync with the model; DI composition of both hosts.
+  in-memory SQLite with the real EF Core model; migrations in sync with the model; DI composition of both hosts; and,
+  on a real SQL Server (opt-in, run in CI), a host that loses the race to create the database still migrates.
 - **Web** - the real ASP.NET Core pipeline via `WebApplicationFactory`: routing, binding, validation (RFC 7807 problems),
   JSON shape, SPA fallback vs. API 404/405, security headers (also on errors), rate limiting, health endpoints, output
   caching and compression.
@@ -289,7 +292,8 @@ Run deployment-check tests from the repository root with `python -B -m unittest 
 
 - **CI** ([ci.yml](.github/workflows/ci.yml)) on every push and on pull requests to `main`: .NET build (high/critical NuGet
   advisories fail it) and tests with coverage summary, `npm audit`, front-end lint/tests/coverage/build, Playwright
-  browser tests, deployment smoke-check unit tests, Bicep compile and lint, and all migrations applied and rolled back on SQL Server 2022.
+  browser tests, deployment smoke-check unit tests, Bicep compile and lint, and on SQL Server 2022 all migrations applied
+  and rolled back plus the SQL Server tests.
 - **CD** ([deploy.yml](.github/workflows/deploy.yml)) after a green CI run on `main` once Azure is configured: a build job
   without credentials packages both apps; the deploy job (OpenID Connect, `production` environment, which is where required reviewers are configured)
   provisions `infra/`, deploys exactly those packages and requires `/health` to report `Healthy` and every city to have a

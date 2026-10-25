@@ -22,3 +22,18 @@ export function colorForCity(city: string, allCities: readonly string[]): string
   const index = allCities.findIndex((candidate) => candidate.toLowerCase() === key);
   return SERIES_SLOTS[index] ?? OTHER_SLOT;
 }
+
+/**
+ * The cities to assign colours from: the server's list of known cities plus the cities in the current result,
+ * alphabetically. Right after the first fetch into an empty database that list is still empty (it is cached for
+ * minutes), and every city would otherwise stay grey until it expires.
+ */
+export function knownCities(listed: readonly string[], shown: readonly string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const city of [...listed, ...shown]) {
+    if (!byKey.has(city.toLowerCase())) {
+      byKey.set(city.toLowerCase(), city);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+}

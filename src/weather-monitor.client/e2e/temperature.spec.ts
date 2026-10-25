@@ -65,12 +65,13 @@ test.describe('Temperature page', () => {
     }
   });
 
-  test('requests the last 24 hours by default and the chosen preset afterwards', async ({ page }) => {
+  test('requests the last hour by default and the chosen preset afterwards', async ({ page }) => {
     const api = await mockApi(page);
     await page.goto('/temperature');
     await expect(page.getByRole('figure')).toBeVisible();
 
-    expect(spanHours(api.historyRequests()[0]!)).toBe(24);
+    expect(spanHours(api.historyRequests()[0]!)).toBe(1);
+    await expect(page.getByRole('button', { name: 'Last hour' })).toHaveAttribute('aria-pressed', 'true');
 
     await page.getByRole('button', { name: 'Last 7 days' }).click();
     await expect.poll(() => api.historyRequests().map(spanHours)).toContain(7 * 24);
@@ -90,7 +91,7 @@ test.describe('Temperature page', () => {
     await expect
       .poll(() => api.historyRequests().map((url) => `${url.searchParams.get('from')}|${url.searchParams.get('to')}`))
       .toContain('2026-10-18T05:00:00.000Z|2026-10-19T05:30:00.000Z');
-    await expect(page.getByRole('button', { name: 'Last 24 hours' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByRole('button', { name: 'Last hour' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('explains an invalid range instead of requesting it', async ({ page }) => {
@@ -121,10 +122,11 @@ test.describe('Temperature page', () => {
     await expect(table.getByRole('row')).toHaveCount(61);
 
     const pages = page.getByRole('navigation', { name: 'Reading pages' });
-    await expect(pages).toContainText('Page 1 of 6 · 360 readings');
+    // The default range is the last hour: 60 minutes of fetches for 3 cities.
+    await expect(pages).toContainText('Page 1 of 3 · 180 readings');
     await pages.getByRole('button', { name: 'Next' }).click();
 
-    await expect(pages).toContainText('Page 2 of 6');
+    await expect(pages).toContainText('Page 2 of 3');
     expect(api.readingRequests().at(-1)?.searchParams.get('page')).toBe('2');
   });
 

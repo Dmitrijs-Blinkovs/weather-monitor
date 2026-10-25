@@ -18,6 +18,9 @@ export const RANGE_PRESETS = [
 
 export type RangePresetId = (typeof RANGE_PRESETS)[number]['id'];
 
+/** The range the chart opens with: the most recent readings, a few points per city. */
+export const DEFAULT_PRESET_ID: RangePresetId = '1h';
+
 /** Either a rolling preset (re-evaluated against "now" on every refresh) or a fixed custom range. */
 export type RangeSelection = { kind: 'preset'; presetId: RangePresetId } | { kind: 'custom'; range: DateRange };
 
@@ -31,7 +34,9 @@ export function resolveRange(selection: RangeSelection, now: Date): DateRange {
   if (selection.kind === 'custom') {
     return selection.range;
   }
-  const preset = RANGE_PRESETS.find((candidate) => candidate.id === selection.presetId) ?? RANGE_PRESETS[2];
+  const preset =
+    RANGE_PRESETS.find((candidate) => candidate.id === selection.presetId) ??
+    RANGE_PRESETS.find((candidate) => candidate.id === DEFAULT_PRESET_ID)!;
   const to = Math.floor(now.getTime() / MINUTE) * MINUTE + MINUTE;
   return { from: new Date(to - preset.durationMs), to: new Date(to) };
 }

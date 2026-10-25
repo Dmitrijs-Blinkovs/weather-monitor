@@ -14,6 +14,8 @@ at the attempts, not at the invocation status.
 | `OptionsValidationException ... OpenWeatherMap:ApiKey is not configured` | Key missing for the Functions project. Ask the user to set it (user secrets); check presence only. |
 | `OptionsValidationException ... Weather` / `Cities` | Invalid city list in `appsettings.json` (see `manage-cities`). |
 | Storage / `127.0.0.1:10000` connection errors, timer never fires | Azurite is not running. |
+| `Failed executing DbCommand` for `CREATE DATABASE`, then `Another host created the database at the same time` | Not a fault: Web and Functions created the missing database at once and this host migrated again (ADR 0018). |
+| Host stops at startup with `SqlException` 1801 `Database '...' already exists` | The retry in `DatabaseMigrationService.MigrateAsync` is missing or failed again; run the `Category=SqlServer` test (`verify-changes`). |
 | No `Executing 'Functions.FetchWeather'` lines | Host not started, or stuck at startup - read the first error in the output. |
 | `Weather ingestion completed: N succeeded, M failed` | Host is fine; continue with the failed attempts. |
 

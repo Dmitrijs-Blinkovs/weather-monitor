@@ -16,6 +16,7 @@ dotnet test --solution WeatherMonitor.slnx --configuration Release --no-build --
 
 - Expect `0 Warning(s)` and `0 Error(s)`: `TreatWarningsAsErrors` is on, so analyzer and style findings fail the build.
   Fix the code; do not suppress warnings or edit `Directory.Build.props` to get green.
+- Expect one skipped test: the `Category=SqlServer` tests need `WEATHERMONITOR_TEST_SQLSERVER` (section 4 runs them).
 - `xUnit1051` -> pass `TestContext.Current.CancellationToken`.
 - `NU1903`/`NU1904` errors (high/critical vulnerable package, also transitive) -> update it or pin a fixed version in
   `Directory.Packages.props` ("Transitive security pins"). `NU1901`/`NU1902` stay warnings.
@@ -65,6 +66,13 @@ dotnet ef database update --project src/WeatherMonitor.Infrastructure --startup-
 ```
 
 Then `database update 0` and again the latest, and drop `WeatherMonitor_Verify` afterwards.
+
+The same CI job runs the opt-in SQL Server tests (two hosts creating a missing database at once). Locally, on LocalDB
+(each test creates and drops its own `WeatherMonitorTest_<guid>` database):
+
+```bash
+WEATHERMONITOR_TEST_SQLSERVER='Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True' dotnet test --project tests/WeatherMonitor.Infrastructure.Tests --filter-trait "Category=SqlServer"
+```
 
 ## 5. Behaviour
 

@@ -166,6 +166,12 @@ jobs:
           ef 0
           ef
 
+      # Opt-in tests that need a real SQL Server (skipped in the main test job): e.g. two hosts creating the database.
+      - name: SQL Server tests
+        env:
+          WEATHERMONITOR_TEST_SQLSERVER: Server=localhost,1433;User Id=sa;Password=${{ env.SA_PASSWORD }};TrustServerCertificate=True
+        run: dotnet test --project tests/WeatherMonitor.Infrastructure.Tests --filter-trait "Category=SqlServer"
+
   e2e:
     name: Browser tests (Playwright)
     runs-on: ubuntu-latest

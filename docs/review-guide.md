@@ -44,7 +44,8 @@ the live provider key works. Complete the live checks above separately.
 ## Checks and optional infrastructure
 
 Use [verify changes](runbooks/verify-changes.md) for the repeatable test procedure.
-.NET and front-end tests do not require an API key or SQL Server. Live operation does.
+.NET and front-end tests do not require an API key or SQL Server (the one SQL Server test is skipped without it and
+runs in CI). Live operation does.
 
 The assignment permits local Azure Functions execution. Azure hosting templates and CI/CD
 are provided as additional deployment preparation; they have not yet been validated by a

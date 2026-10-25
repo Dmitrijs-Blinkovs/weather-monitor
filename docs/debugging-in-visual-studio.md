@@ -44,8 +44,11 @@ What happens:
 1. Visual Studio starts **Azurite** (needed by the timer) automatically.
 2. A console window opens for the **Functions host** (port 7071). Wait for `FetchWeather: timerTrigger`.
    At second 0 of every minute it logs `Weather ingestion completed: 3 succeeded, 0 failed`.
-3. A console window opens for the **Web host** (ports 7180/5180). It applies EF Core migrations (creates the
-   `WeatherMonitor` database in LocalDB on the first run) and starts **Vite** (port 5173).
+3. A console window opens for the **Web host** (ports 7180/5180). It starts **Vite** (port 5173).
+   Both hosts apply the EF Core migrations on start; on the first run one of them creates the `WeatherMonitor`
+   database in LocalDB. When both try at the same moment, one console shows a red `Failed executing DbCommand` for
+   `CREATE DATABASE` (error 1801) followed by `Another host created the database at the same time; applying the
+   migrations again` - expected, that host then starts normally.
 4. The browser opens <https://localhost:7180>; the page "Launching the SPA proxy..." forwards to
    <http://127.0.0.1:5173>. Use the **Temperature** and **Fetch log** links.
 
@@ -65,7 +68,7 @@ Stop everything with **Shift+F5**.
 | `src/WeatherMonitor.Infrastructure/Persistence/WeatherHistoryReader.cs` | the `DISTINCT` query result |
 | `src/WeatherMonitor.Application/Retention/DataRetentionService.cs` - `PurgeAsync` | the cutoff and each deleted batch (trigger `PurgeOldData`, section 5) |
 | `src/WeatherMonitor.Infrastructure/Persistence/DataFreshnessHealthCheck.cs` - `CheckHealthAsync` | why `/health` reports `Degraded` |
-| `src/WeatherMonitor.Infrastructure/Persistence/DatabaseMigrationService.cs` - `StartingAsync` | migrations on start (and the read-only grant in Azure) |
+| `src/WeatherMonitor.Infrastructure/Persistence/DatabaseMigrationService.cs` - `StartingAsync` | migrations on start (and the read-only grant in Azure); `MigrateAsync` shows the retry when both hosts create the database |
 
 Tip: to inspect the SQL that EF Core sends, set `"Microsoft.EntityFrameworkCore.Database.Command": "Information"` in
 `src/WeatherMonitor.Web/appsettings.json` or `src/WeatherMonitor.Functions/appsettings.json`.
@@ -121,5 +124,7 @@ FROM WeatherSnapshots ORDER BY Id DESC;
 | Only the Web console opens, no data arrives | The startup item is `WeatherMonitor.Web`. Pick **Web + Functions** in the startup dropdown next to Start (or set both projects to Start under **Configure Startup Projects**). |
 | Timer never fires, storage connection errors in the Functions console | Azurite is not running. Restart debugging, or start it manually from the repository root: `npx azurite --silent --location .azurite`. |
 | Error `NU1903`/`NU1904` (warning `NU1901`/`NU1902`) | A package with a known vulnerability; high and critical ones fail the build. Update it or pin a fixed transitive version in `Directory.Packages.props`. |
+| Debugger stops in `DatabaseMigrationService` with `SqlException` 1801 `Database 'WeatherMonitor' already exists` | Both hosts created the database at once. The service handles it (retry after clearing the pool), so this break means an older build without that fix, or **Exception Settings** set to break when `SqlException` is thrown: press Continue. |
+| Debugger stops in a controller with `OperationCanceledException: The operation was canceled` (e.g. after clicking **Payload** in the fetch log), and the page waits | Not a fault: the browser aborted that request (React StrictMode mounts every component twice in development and cancels the first request; closing a dialog or leaving a page does the same), and ASP.NET Core ends an aborted request without an error response. The page waits only because the debugger paused the Web process: press Continue. To stop breaking on it, untick **Break when this exception type is user-unhandled** for `System.OperationCanceledException` in the exception dialog. |
 | `/health` says `Degraded` | No successful fetch in the last 10 minutes: the Functions host is not running, or every fetch fails (see the Fetch log page and `docs/runbooks/troubleshoot-ingestion.md`). |
 | `429 Too Many Requests` from the API | More than `RateLimiting:PermitsPerMinute` (120) requests a minute from one client, e.g. a script in a loop. Wait for `Retry-After` or raise the limit in `appsettings.Development.json`. |

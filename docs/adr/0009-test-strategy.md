@@ -20,6 +20,8 @@ that usually break: SQL translation, HTTP mapping, ASP.NET Core binding and vali
 - No SQL Server, Azurite, network or API key needed to run tests.
 - SQL Server-specific behaviour: CI applies, rolls back and re-applies every migration on SQL Server 2022, and
   `MigrationTests` keep the model and the migrations in sync; collation and query plans are checked by running locally.
+  Behaviour that only SQL Server has (two hosts creating a missing database) is proven by opt-in tests that are
+  skipped without SQL Server ([0018](0018-opt-in-sql-server-tests.md)).
 
 ## Alternatives considered
 

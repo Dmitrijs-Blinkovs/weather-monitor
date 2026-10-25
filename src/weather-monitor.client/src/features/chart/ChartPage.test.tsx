@@ -6,7 +6,7 @@ import { renderWithProviders } from '../../test/renderWithProviders';
 import { ChartPage } from './ChartPage';
 
 describe('ChartPage', () => {
-  it('requests the last 24 hours by default and shows a card per city', async () => {
+  it('requests the last hour by default and shows a card per city', async () => {
     const api = fakeApi({
       getHistory: vi.fn().mockResolvedValue(history([series(), series({ city: 'Rome', country: 'IT' })])),
     });
@@ -17,7 +17,7 @@ describe('ChartPage', () => {
     expect(within(cards).getAllByRole('listitem')).toHaveLength(2);
 
     const [range] = vi.mocked(api.getHistory).mock.calls[0]!;
-    expect(range.to.getTime() - range.from.getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(range.to.getTime() - range.from.getTime()).toBe(60 * 60 * 1000);
   });
 
   it('can show every reading of the selected period as a table', async () => {
@@ -33,7 +33,20 @@ describe('ChartPage', () => {
     const table = await screen.findByRole('table');
     expect(within(table).getAllByRole('row')).toHaveLength(3);
     const [range] = vi.mocked(api.getReadings).mock.calls[0]!;
-    expect(range.to.getTime() - range.from.getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(range.to.getTime() - range.from.getTime()).toBe(60 * 60 * 1000);
+  });
+
+  it('colours every city while the list of known cities is still empty, as right after the first fetch', async () => {
+    const api = fakeApi({
+      getCities: vi.fn().mockResolvedValue([]),
+      getHistory: vi.fn().mockResolvedValue(history([series(), series({ city: 'Rome', country: 'IT' })])),
+    });
+
+    renderWithProviders(<ChartPage />, api);
+
+    const cards = await screen.findByRole('list', { name: 'Cities in the selected period' });
+    const swatches = [...cards.querySelectorAll<HTMLElement>('.series-key')].map((swatch) => swatch.style.background);
+    expect(swatches).toEqual(['var(--series-1)', 'var(--series-2)']);
   });
 
   it('explains when the period has no data yet', async () => {

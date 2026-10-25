@@ -23,6 +23,7 @@ replaces the part that changed and link it from the record it changes.
 | [0015](0015-least-privilege-identities.md) | One managed identity per app, read-only database access for the web app |
 | [0016](0016-observability.md) | Observability: OpenTelemetry, ingestion metrics, data-freshness health check and an alert |
 | [0017](0017-request-budget-and-deployment-freshness.md) | Full HTTP request budget and post-deployment freshness watermark |
+| [0018](0018-opt-in-sql-server-tests.md) | Opt-in tests on a real SQL Server (two hosts creating the database) |
 
 Template for a new record (`NNNN-short-title.md`):
 
