@@ -32,7 +32,7 @@ jobs:
         github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # For workflow_run, build exactly the commit CI tested.
@@ -89,7 +89,7 @@ jobs:
       ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
     steps:
       # Only the templates, azure.yaml, the smoke test and the shipped city list are needed here; nothing is built.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
