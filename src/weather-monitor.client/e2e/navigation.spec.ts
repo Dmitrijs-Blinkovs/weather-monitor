@@ -21,7 +21,7 @@ test('every page names its author in the footer', async ({ page }) => {
 
   for (const path of ['/temperature', '/fetch-log']) {
     await page.goto(path);
-    await expect(page.getByRole('contentinfo')).toHaveText('Designed and built by Dmitrijs Bļinkovs');
+    await expect(page.getByRole('contentinfo')).toHaveText('Designed and built by Dmitrijs Bļinkovs · With AI assistance');
   }
 });
 

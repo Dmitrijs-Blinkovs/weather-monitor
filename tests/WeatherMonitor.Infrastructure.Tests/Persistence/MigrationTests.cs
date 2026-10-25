@@ -17,6 +17,6 @@ public sealed class MigrationTests
         using var context = new WeatherDbContext(options);
 
         context.Database.HasPendingModelChanges().ShouldBeFalse(
-            "the model changed without a migration - run `dotnet ef migrations add` (see .claude/skills/add-ef-migration)");
+            "the model changed without a migration - run `dotnet ef migrations add` (see docs/runbooks/add-ef-migration.md)");
     }
 }

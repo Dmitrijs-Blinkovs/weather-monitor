@@ -31,6 +31,18 @@
     <File Path="docs/deployment.md" />
     <File Path="docs/getting-started.md" />
     <File Path="docs/security.md" />
+    <File Path="docs/performance.md" />
+    <File Path="docs/review-guide.md" />
+  </Folder>
+  <Folder Name="/docs/runbooks/">
+    <File Path="docs/runbooks/README.md" />
+    <File Path="docs/runbooks/add-api-endpoint.md" />
+    <File Path="docs/runbooks/add-ef-migration.md" />
+    <File Path="docs/runbooks/deploy-to-azure.md" />
+    <File Path="docs/runbooks/manage-cities.md" />
+    <File Path="docs/runbooks/run-locally.md" />
+    <File Path="docs/runbooks/troubleshoot-ingestion.md" />
+    <File Path="docs/runbooks/verify-changes.md" />
   </Folder>
   <Folder Name="/docs/adr/">
     <File Path="docs/adr/README.md" />
@@ -50,6 +62,7 @@
     <File Path="docs/adr/0014-data-retention.md" />
     <File Path="docs/adr/0015-least-privilege-identities.md" />
     <File Path="docs/adr/0016-observability.md" />
+    <File Path="docs/adr/0017-request-budget-and-deployment-freshness.md" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/weather-monitor.client/weather-monitor.client.esproj">

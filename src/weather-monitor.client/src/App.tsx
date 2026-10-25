@@ -66,7 +66,7 @@ function AppShell() {
       </main>
 
       <footer className="app-footer">
-        <p className="app-footer__inner">Designed and built by Dmitrijs Bļinkovs</p>
+        <p className="app-footer__inner">Designed and built by Dmitrijs Bļinkovs · With AI assistance</p>
       </footer>
     </div>
   );

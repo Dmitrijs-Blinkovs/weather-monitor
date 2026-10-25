@@ -138,7 +138,8 @@ Any coding agent (Claude Code, Codex, Cursor, Copilot...) can do steps 1-7. Give
 > with `dotnet user-secrets`; you may only check whether `OpenWeatherMap:ApiKey` is present. Then build, run all tests,
 > start Azurite, the Functions host and the Web host, and verify with the checks in section 7.
 
-Claude Code users get the same procedure as a skill: `.claude/skills/run-locally`. Installing Core Tools with winget
+The shared procedure is in `docs/runbooks/run-locally.md`; optional Claude skill wrappers link to it.
+Installing Core Tools with winget
 shows a Windows administrator prompt that only you can approve.
 
 ## 9. Troubleshooting
@@ -155,7 +156,7 @@ shows a Windows administrator prompt that only you can approve.
 | Port 5173/5180/7071/7180 already in use | Another instance is running; stop it (Visual Studio Shift+F5 or close the terminal). |
 | `func` not found after winget install | Open a new terminal (PATH refresh). |
 | `Testing with VSTest target is no longer supported` | Use `dotnet test --solution ...` / `--project ...` (Microsoft.Testing.Platform, configured in `global.json`). |
-| A city shows the wrong country | Its `CountryCode` is missing or wrong in `Weather:Cities` (a bare `Rome` is Rome, Georgia, USA). Fix it (`.claude/skills/manage-cities`); rows stored earlier keep the old country - reset the local database (below) if that matters. |
+| A city shows the wrong country | Its `CountryCode` is missing or wrong in `Weather:Cities` (a bare `Rome` is Rome, Georgia, USA). Fix it (`docs/runbooks/manage-cities.md`); rows stored earlier keep the old country - reset the local database (below) if that matters. |
 | Build error `MSB3030: Could not copy ... WorkerExtensions ... because it was not found` | The clone path is too deep for Windows' 260-character limit (the Functions build nests long paths). Clone to a short path such as `C:\src\weather-monitor`, or enable long paths in Windows. |
 
 Reset the local database (it is recreated on the next start):

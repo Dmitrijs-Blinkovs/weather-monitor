@@ -118,7 +118,7 @@ IX (IsSuccess, AttemptedAtUtc)
   serves the log's result filter and the data-freshness check.
 - History older than `Retention:Days` (90) is deleted daily (section 6).
 - Schema changes go through EF Core migrations in `Infrastructure/Persistence/Migrations`
-  (see `.claude/skills/add-ef-migration`). Hosts apply them on start when `Database:ApplyMigrationsOnStartup=true`;
+  (see `docs/runbooks/add-ef-migration.md`). Hosts apply them on start when `Database:ApplyMigrationsOnStartup=true`;
   EF Core 9+ takes a database lock, so both hosts can do so concurrently. In Azure only the function migrates; it then
   grants the web app's identity `db_datareader` (`Database:ReadOnlyIdentity`, idempotent T-SQL with `QUOTENAME`).
 

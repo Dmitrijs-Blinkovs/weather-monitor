@@ -32,6 +32,9 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 
 ## Documentation
 
+For the assignment handover, start with the [review guide](docs/review-guide.md): local verification,
+requirement mapping, expected behaviour and the scope of the optional Azure deployment setup.
+
 | Document | For |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | Setting the environment up from scratch, by hand or with an AI assistant |
@@ -42,7 +45,7 @@ SQL Server, and an ASP.NET Core MVC + React app shows the fetch log and a temper
 | [docs/architecture.md](docs/architecture.md) | Components, data model, flows, API, front end, configuration, testing |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records - why things are the way they are |
 | [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | Orientation, conventions and pitfalls for contributors and AI agents |
-| [.claude/skills/](.claude/skills) | Step-by-step runbooks: run locally, verify changes, manage cities, migrations, endpoints, troubleshooting, deployment |
+| [docs/runbooks/](docs/runbooks) | Step-by-step runbooks: run locally, verify changes, manage cities, migrations, endpoints, troubleshooting, deployment |
 
 ## Architecture
 

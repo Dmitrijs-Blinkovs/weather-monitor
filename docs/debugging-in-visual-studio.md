@@ -121,5 +121,5 @@ FROM WeatherSnapshots ORDER BY Id DESC;
 | Only the Web console opens, no data arrives | The startup item is `WeatherMonitor.Web`. Pick **Web + Functions** in the startup dropdown next to Start (or set both projects to Start under **Configure Startup Projects**). |
 | Timer never fires, storage connection errors in the Functions console | Azurite is not running. Restart debugging, or start it manually from the repository root: `npx azurite --silent --location .azurite`. |
 | Error `NU1903`/`NU1904` (warning `NU1901`/`NU1902`) | A package with a known vulnerability; high and critical ones fail the build. Update it or pin a fixed transitive version in `Directory.Packages.props`. |
-| `/health` says `Degraded` | No successful fetch in the last 10 minutes: the Functions host is not running, or every fetch fails (see the Fetch log page and `.claude/skills/troubleshoot-ingestion`). |
+| `/health` says `Degraded` | No successful fetch in the last 10 minutes: the Functions host is not running, or every fetch fails (see the Fetch log page and `docs/runbooks/troubleshoot-ingestion.md`). |
 | `429 Too Many Requests` from the API | More than `RateLimiting:PermitsPerMinute` (120) requests a minute from one client, e.g. a script in a loop. Wait for `Retry-After` or raise the limit in `appsettings.Development.json`. |

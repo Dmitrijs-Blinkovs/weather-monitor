@@ -97,7 +97,7 @@ The azd environment (including the key) is stored under `.azure/`, which is igno
 Verify:
 1. `<WEB_URL>/health/live` returns `Healthy` (the process runs).
 2. `<WEB_URL>/health` returns `Healthy` within a few minutes: the database is reachable and a fetch succeeded in the
-   last 10 minutes. `Degraded` means no recent successful fetch - see `.claude/skills/troubleshoot-ingestion`.
+   last 10 minutes. `Degraded` means no recent successful fetch - see `docs/runbooks/troubleshoot-ingestion.md`.
 3. The Fetch log shows three successful attempts per minute.
 4. Application Insights > Metrics (custom namespace) shows `weather.fetch.attempts` split by `outcome`.
 
@@ -141,7 +141,7 @@ skipped until the repository variable `AZURE_ENV_NAME` exists, and fails with a 
 - **Trigger a function manually:** the function app denies inbound traffic, so the portal's "Test/Run" and the admin
   API are closed. Add a temporary access restriction for your IP if you really need it, and remove it afterwards.
 - **Change cities:** change `src/WeatherMonitor.Functions/appsettings.json` and redeploy
-  (`.claude/skills/manage-cities`). App settings (`Weather__Cities__0__Name`, ...) override entries by index and can
+  (`docs/runbooks/manage-cities.md`). App settings (`Weather__Cities__0__Name`, ...) override entries by index and can
   add cities, but cannot remove one from the shipped list.
 - **Rotate the API key:** set the new value as the environment secret (or `azd env set OPENWEATHERMAP_API_KEY`) and run
   the deployment; the versionless Key Vault reference picks up the new version within 24 hours, or at once after a
@@ -172,7 +172,7 @@ lines in `infra/resources.bicep` or an app setting:
 |---|---|---|
 | A second environment (staging, previews) | `azd env new weather-staging` creates its own resource group; for GitHub add a `staging` environment with its own federated credential (`...:environment:staging`) and a deploy job that targets it | `azure.yaml`, `deploy.yml` |
 | Zero-downtime web releases | A `staging` deployment slot on the web app (Standard plan or higher), smoke-tested and then swapped | web app in `resources.bicep` |
-| More cities | App settings `Weather__Cities__3__Name` / `__CountryCode` add a city (arrays merge by index), or change `appsettings.json` and redeploy | `.claude/skills/manage-cities` |
+| More cities | App settings `Weather__Cities__3__Name` / `__CountryCode` add a city (arrays merge by index), or change `appsettings.json` and redeploy | `docs/runbooks/manage-cities.md` |
 | A new secret | A Key Vault secret, an `@Microsoft.KeyVault(SecretUri=...)` app setting, and `Key Vault Secrets User` for the one identity that reads it | `resources.bicep` |
 | Private networking | A VNet with integration subnets for both apps, private endpoints and private DNS zones for SQL, Key Vault and Storage, `publicNetworkAccess: 'Disabled'` | [Hardening options](#hardening-options) |
 | Sign-in for the UI and API | App Service built-in authentication with Entra ID (`authsettingsV2`), or `Microsoft.Identity.Web` in code | web app in `resources.bicep` |

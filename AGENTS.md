@@ -1,7 +1,8 @@
 # Weather Monitor - guide for AI agents and contributors
 
 Read this file first. It is the single source of truth for working on this repository, for humans and for any AI
-assistant (Claude Code reads it through `CLAUDE.md`; Codex, Cursor, Copilot and others read `AGENTS.md` directly).
+assistant. Tool-specific entry points may link here; assistants that do not discover this file automatically should
+be asked to read it. Shared procedures live in `docs/runbooks/` and require no particular AI tool.
 
 ## What this is
 
@@ -21,7 +22,7 @@ The original assignment and how each requirement is met: [README.md](README.md).
 | [docs/deployment.md](docs/deployment.md) | you deploy to Azure or touch `infra/`, `azure.yaml` or the workflows |
 | [docs/security.md](docs/security.md) | you touch the HTTP pipeline, inputs, outbound calls, identities, secrets or pipelines |
 | [docs/performance.md](docs/performance.md) | you change a query, an index, a limit or the chart data - re-run the load test (`tools/load-test`) |
-| [.claude/skills/](.claude/skills) | you do a routine task - each skill is a step-by-step runbook any agent can follow |
+| [docs/runbooks/](docs/runbooks) | you do a routine task - step-by-step procedures for developers and any coding assistant |
 
 ## Repository map
 
@@ -153,7 +154,7 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 4. A data model change has a migration; an API change is reflected in `src/api/types.ts` and the README API table.
 5. A changed design decision has a new ADR in `docs/adr/`, linked from the record it changes; a changed security control is reflected in
    `docs/security.md`.
-6. User-visible change: run the app (`.claude/skills/run-locally`) and look at it.
+6. User-visible change: run the app (`docs/runbooks/run-locally.md`) and look at it.
 
 ## Known pitfalls
 
@@ -203,7 +204,7 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 
 ## Where to start for common tasks
 
-| Task | Start here | Skill |
+| Task | Start here | Runbook |
 |---|---|---|
 | Run / demo / screenshot the app | `docs/getting-started.md` | `run-locally` |
 | Check a change before committing | Definition of done above | `verify-changes` |
@@ -213,3 +214,12 @@ Trigger a timer immediately: `POST http://localhost:7071/admin/functions/FetchWe
 | Fetches failing / no data | Fetch log page, `FetchAttempts` table | `troubleshoot-ingestion` |
 | Deploy to Azure / change infrastructure | `docs/deployment.md`, `infra/`, `.github/workflows/deploy.yml` | `deploy-to-azure` |
 | Security review / new input or header | `docs/security.md`, `Web/Security`, `OpenWeatherMapClient` | `verify-changes` |
+
+## Contributor safeguards
+
+- Never read, print or ask for the OpenWeatherMap API key. Check presence only using the filtered command in
+  `docs/runbooks/run-locally.md`; never expose the output of an unfiltered secrets listing.
+- Do not create or change Azure resources, commit or push unless the user explicitly asks for it.
+- Keep repository code, comments, documentation and UI text in English.
+- `.claude/` and `CLAUDE.md` are optional Claude integration files, not application dependencies.
+  Shared project knowledge belongs in this file and `docs/`, not only in a tool-specific directory.
