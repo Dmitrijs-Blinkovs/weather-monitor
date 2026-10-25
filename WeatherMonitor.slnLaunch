@@ -1,0 +1,16 @@
+[
+  {
+    "Name": "Web + Functions",
+    "Projects": [
+      {
+        "Path": "src\\WeatherMonitor.Functions\\WeatherMonitor.Functions.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\WeatherMonitor.Web\\WeatherMonitor.Web.csproj",
+        "Action": "Start",
+        "DebugTarget": "https"
+      }
+    ]
+  }
+]

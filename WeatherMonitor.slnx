@@ -1,0 +1,85 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="AGENTS.md" />
+    <File Path="azure.yaml" />
+    <File Path="CLAUDE.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="dotnet-tools.json" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+    <File Path="WeatherMonitor.slnLaunch" />
+  </Folder>
+  <Folder Name="/.github/">
+    <File Path=".github/dependabot.yml" />
+    <File Path=".github/pull_request_template.md" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/deploy.yml" />
+  </Folder>
+  <Folder Name="/infra/">
+    <File Path="infra/bicepconfig.json" />
+    <File Path="infra/main.bicep" />
+    <File Path="infra/main.parameters.json" />
+    <File Path="infra/resources.bicep" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/architecture.md" />
+    <File Path="docs/debugging-in-visual-studio.md" />
+    <File Path="docs/deployment.md" />
+    <File Path="docs/getting-started.md" />
+    <File Path="docs/security.md" />
+    <File Path="docs/performance.md" />
+    <File Path="docs/review-guide.md" />
+  </Folder>
+  <Folder Name="/docs/runbooks/">
+    <File Path="docs/runbooks/README.md" />
+    <File Path="docs/runbooks/add-api-endpoint.md" />
+    <File Path="docs/runbooks/add-ef-migration.md" />
+    <File Path="docs/runbooks/deploy-to-azure.md" />
+    <File Path="docs/runbooks/manage-cities.md" />
+    <File Path="docs/runbooks/run-locally.md" />
+    <File Path="docs/runbooks/troubleshoot-ingestion.md" />
+    <File Path="docs/runbooks/verify-changes.md" />
+  </Folder>
+  <Folder Name="/docs/adr/">
+    <File Path="docs/adr/README.md" />
+    <File Path="docs/adr/0001-layered-architecture.md" />
+    <File Path="docs/adr/0002-raw-payload-plus-extracted-columns.md" />
+    <File Path="docs/adr/0003-log-every-attempt-isolate-failures.md" />
+    <File Path="docs/adr/0004-distinct-observations-on-read.md" />
+    <File Path="docs/adr/0005-cities-with-country-codes.md" />
+    <File Path="docs/adr/0006-utc-datetime.md" />
+    <File Path="docs/adr/0007-spa-hosted-by-aspnet-core.md" />
+    <File Path="docs/adr/0008-secrets-and-local-settings.md" />
+    <File Path="docs/adr/0009-test-strategy.md" />
+    <File Path="docs/adr/0010-accessible-chart.md" />
+    <File Path="docs/adr/0011-azure-hosting-and-identity.md" />
+    <File Path="docs/adr/0012-ci-cd-with-github-actions.md" />
+    <File Path="docs/adr/0013-browser-tests-with-playwright.md" />
+    <File Path="docs/adr/0014-data-retention.md" />
+    <File Path="docs/adr/0015-least-privilege-identities.md" />
+    <File Path="docs/adr/0016-observability.md" />
+    <File Path="docs/adr/0017-request-budget-and-deployment-freshness.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/weather-monitor.client/weather-monitor.client.esproj">
+      <Build />
+      <Deploy />
+    </Project>
+    <Project Path="src/WeatherMonitor.Application/WeatherMonitor.Application.csproj" />
+    <Project Path="src/WeatherMonitor.Domain/WeatherMonitor.Domain.csproj" />
+    <Project Path="src/WeatherMonitor.Functions/WeatherMonitor.Functions.csproj" />
+    <Project Path="src/WeatherMonitor.Infrastructure/WeatherMonitor.Infrastructure.csproj" />
+    <Project Path="src/WeatherMonitor.Web/WeatherMonitor.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests/Directory.Build.props" />
+    <Project Path="tests/WeatherMonitor.Application.Tests/WeatherMonitor.Application.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Functions.Tests/WeatherMonitor.Functions.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Infrastructure.Tests/WeatherMonitor.Infrastructure.Tests.csproj" />
+    <Project Path="tests/WeatherMonitor.Web.Tests/WeatherMonitor.Web.Tests.csproj" />
+  </Folder>
+</Solution>

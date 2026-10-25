@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Azure Functions (isolated worker) app that fetches the weather every minute.</Description>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <!-- Not a secret: the name of this project's local user-secrets folder
+         (%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json), read in Development only. The OpenWeatherMap key lives
+         there, never in files under source control; Azure uses a Key Vault reference instead. -->
+    <UserSecretsId>weather-monitor-functions-7c1f3a52</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WeatherMonitor.Application\WeatherMonitor.Application.csproj" />
+    <ProjectReference Include="..\WeatherMonitor.Infrastructure\WeatherMonitor.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WeatherMonitor.Functions.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <!--
+    The Functions SDK gives `dotnet run` a working directory relative to the project ("bin\Debug\net10.0\"),
+    so running the project from any other folder fails ("The directory name is invalid"). Make it absolute.
+  -->
+  <Target Name="UseAbsoluteRunWorkingDirectory" AfterTargets="ComputeRunArguments" Condition="'$(RunWorkingDirectory)' != ''">
+    <PropertyGroup>
+      <RunWorkingDirectory>$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(RunWorkingDirectory)'))))</RunWorkingDirectory>
+    </PropertyGroup>
+  </Target>
+
+</Project>

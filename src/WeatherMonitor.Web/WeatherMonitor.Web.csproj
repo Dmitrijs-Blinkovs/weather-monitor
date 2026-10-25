@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <Description>ASP.NET Core MVC API and host for the React front end.</Description>
+    <SpaRoot>..\weather-monitor.client</SpaRoot>
+    <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
+    <SpaProxyServerUrl>http://127.0.0.1:5173</SpaProxyServerUrl>
+    <!-- The OpenAPI document (development only) takes the controllers' XML comments as endpoint descriptions.
+         Undocumented public members are fine here (CS1591), the comments are for the API reference only. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WeatherMonitor.Application\WeatherMonitor.Application.csproj" />
+    <ProjectReference Include="..\WeatherMonitor.Infrastructure\WeatherMonitor.Infrastructure.csproj" />
+    <!-- Builds the React app and copies its output into wwwroot on publish. -->
+    <ProjectReference Include="..\weather-monitor.client\weather-monitor.client.esproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy" />
+    <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WeatherMonitor.Web.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,64 @@
+import { expect, test } from '@playwright/test';
+import { mockApi } from './support/mockApi';
+
+test('the root opens the temperature page and the header switches between pages', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+
+  await expect(page).toHaveURL(/\/temperature$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Temperature' })).toBeVisible();
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Fetch log' }).click();
+  await expect(page).toHaveURL(/\/fetch-log$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Fetch log' })).toBeVisible();
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Temperature' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Temperature' })).toBeVisible();
+});
+
+test('every page names its author in the footer', async ({ page }) => {
+  await mockApi(page);
+
+  for (const path of ['/temperature', '/fetch-log']) {
+    await page.goto(path);
+    await expect(page.getByRole('contentinfo')).toHaveText('Designed and built by Dmitrijs Bļinkovs · With AI assistance');
+  }
+});
+
+test('a deep link opens the page directly', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/fetch-log');
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Fetch log' })).toBeVisible();
+});
+
+test('both pages work under the strict content security policy', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
+      violations.push(message.text());
+    }
+  });
+  await mockApi(page);
+
+  const response = await page.goto('/temperature');
+  expect(response?.headers()['content-security-policy']).toContain("script-src 'self'");
+  await expect(page.locator('.recharts-line')).toHaveCount(3);
+  const plot = (await page.locator('.recharts-wrapper').boundingBox())!;
+  await page.mouse.move(plot.x + plot.width * 0.9, plot.y + plot.height / 2);
+  await expect(page.locator('.chart-tooltip')).toBeVisible();
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Fetch log' }).click();
+  await expect(page.getByRole('table')).toBeVisible();
+
+  expect(violations).toEqual([]);
+});
+
+test('the page is in English even in a Latvian browser', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/temperature');
+
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('button', { name: 'Last 24 hours' })).toBeVisible();
+  await expect(page.getByText(/^Refreshed \d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}$/)).toBeVisible();
+});

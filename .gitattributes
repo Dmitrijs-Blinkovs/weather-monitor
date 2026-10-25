@@ -1,0 +1,14 @@
+# Normalise line endings in the repository (LF); each checkout converts as configured (.editorconfig sets the style).
+* text=auto
+
+# Windows scripts must keep CRLF, shell scripts LF, on every platform.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

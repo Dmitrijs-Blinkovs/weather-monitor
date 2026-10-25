@@ -1,0 +1,10 @@
+{
+  "version": "2.0",
+  "functionTimeout": "00:00:55",
+  "telemetryMode": "OpenTelemetry",
+  "logging": {
+    "logLevel": {
+      "default": "Information"
+    }
+  }
+}

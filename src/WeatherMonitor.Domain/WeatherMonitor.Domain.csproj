@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Domain model: fetch attempts and weather snapshots. No external dependencies.</Description>
+  </PropertyGroup>
+
+</Project>

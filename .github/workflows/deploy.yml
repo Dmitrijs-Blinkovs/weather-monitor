@@ -1,0 +1,143 @@
+name: Deploy to Azure
+
+# Provisions infra/ with Bicep and deploys both apps with the Azure Developer CLI (docs/deployment.md).
+# - Runs after a green CI run on main, or manually from main; skipped until the Azure variables are configured.
+# - The build job compiles and packages without any Azure credential or secret, so third-party build code
+#   (npm lifecycle scripts, MSBuild targets) never sees them. The deploy job holds the OIDC token but runs no
+#   build tooling: it only provisions and uploads the packages produced by the build job.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build packages (no credentials)
+    # The workflow_run branch filter matches only the branch NAME, which a pull request from a fork can also call
+    # "main"; deploy only CI runs of pushes to this repository.
+    if: >-
+      vars.AZURE_ENV_NAME != '' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          # For workflow_run, build exactly the commit CI tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/weather-monitor.client/package-lock.json
+
+      - name: Install front-end packages
+        working-directory: src/weather-monitor.client
+        run: npm ci
+
+      # The web publish builds the React client into wwwroot.
+      - name: Publish
+        run: |
+          dotnet publish src/WeatherMonitor.Web --configuration Release --output publish/web
+          dotnet publish src/WeatherMonitor.Functions --configuration Release --output publish/functions
+          (cd publish/web && zip -qr ../web.zip .)
+          (cd publish/functions && zip -qr ../functions.zip .)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: |
+            publish/web.zip
+            publish/functions.zip
+          retention-days: 7
+
+  deploy:
+    name: Provision and deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Azure login; only this job has it
+    # Protect this environment (Settings > Environments): required reviewers, deployments from main only.
+    environment:
+      name: production
+      url: ${{ steps.outputs.outputs.web_url }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      WEB_SKU_NAME: ${{ vars.WEB_SKU_NAME || 'B1' }}
+      ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+    steps:
+      # Only the templates, azure.yaml, the smoke test and the shipped city list are needed here; nothing is built.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Check configuration
+        run: |
+          missing=""
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENV_NAME AZURE_LOCATION; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository variables:$missing (see docs/deployment.md)"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages
+          path: packages
+
+      - uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2.4.0
+
+      - name: Log in to Azure (OIDC)
+        run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider "github" --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Provision infrastructure
+        env:
+          # An environment secret of "production": only this step sees it.
+          OPENWEATHERMAP_API_KEY: ${{ secrets.OPENWEATHERMAP_API_KEY }}
+        run: azd provision --no-prompt
+
+      - name: Deploy the packages built from this commit
+        run: |
+          azd deploy web --from-package packages/web.zip --no-prompt
+          azd deploy functions --from-package packages/functions.zip --no-prompt
+
+      # The previous worker can still write while deployment is in progress. Only accept attempts started later.
+      - name: Record deployment completion
+        run: echo "DEPLOY_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Read outputs
+        id: outputs
+        run: echo "web_url=$(azd env get-value WEB_URL)" >> "$GITHUB_OUTPUT"
+
+      # Healthy (database reachable, every city fresh) AND a successful fetch of every shipped city after the
+      # deployment completed: checks timer -> OpenWeatherMap -> database -> web app without accepting data written
+      # by the previous release during deployment. This checks freshness, not the identity of the executing binary.
+      - name: Smoke test
+        env:
+          WEB_URL: ${{ steps.outputs.outputs.web_url }}
+        run: python3 .github/scripts/smoke_test.py "$WEB_URL" "$DEPLOY_COMPLETED_AT" src/WeatherMonitor.Functions/appsettings.json
